@@ -28,9 +28,14 @@ export function roomSettings(profile) {
     <div class="actions"><button class="button">設定を保存</button>${link('#my','旅の部屋へ','back','text-link')}</div></form>`,{narrow:true});
 }
 
+function realStampCount(profile){
+  const keys=new Set(Object.keys(profile.stamps??{}));
+  for(const [key,entries] of Object.entries(profile.visits??{}))if(entries.some(x=>x.kind==='self'||x.kind==='gps'))keys.add(key);
+  return keys.size;
+}
 export const milestones = [
-  {id:'first-stamp',name:'旅のはじまり',detail:'スタンプを1個押す', isEarned:profile=>Object.keys(profile.stamps ?? {}).length >= 1},
-  {id:'three-stamps',name:'あちこち旅する人',detail:'スタンプを3個押す', isEarned:profile=>Object.keys(profile.stamps ?? {}).length >= 3},
+  {id:'first-stamp',name:'旅のはじまり',detail:'スタンプを1個押す', isEarned:profile=>realStampCount(profile) >= 1},
+  {id:'three-stamps',name:'あちこち旅する人',detail:'スタンプを3個押す', isEarned:profile=>realStampCount(profile) >= 3},
   {id:'first-booklet',name:'小さな旅の支度',detail:'旅の栞を1冊保存する', isEarned:(_profile,data)=>data.trips.length >= 1}
 ];
 

@@ -1,5 +1,5 @@
-import { places, themes, travelerTypes, collections } from './data.js';
-import { escapeHtml as e, mapsSearch, mapsTransit, nearbyPlaces, rankPlaces, routePriorities, stampKey, walkingLimits } from './core.js';
+import { places, themes, travelerTypes } from './data.js';
+import { escapeHtml as e, mapsSearch, mapsTransit, nearbyPlaces, rankPlaces, routePriorities, walkingLimits } from './core.js';
 import { read, update, clear } from './storage.js';
 import { icon, link, external, page, empty, placeCard, chips, options, saveButton } from './ui.js';
 import { recordScreen, recordGroup, renderPhotos, submitRecord, shareTrip, revokePhotos } from './records.js';
@@ -12,6 +12,8 @@ import { mailbox, medalPage, milestones, playRoomSound, roomMotion, roomScreen, 
 import { questions, quizPage, travelerRanking } from './traveler-quiz.js';
 import { loadToyamaPilot, pilotPage } from './transit-pilot.js';
 
+import {stampScreen,mountStampArt,findStamp,personalBook,recordVisit,gpsMatches} from './stamp-book.js';
+import {dateInJapan} from './travel-life.js';
 import { createWorld } from './world.js';
 import { mountRouteMaps } from './transit-pilot.js';
 
@@ -23,7 +25,7 @@ let pilot, pilotLoading, pilotRequest;
 const gallery = createGallery(view,{go,notify:toast});
 const world = createWorld(view,{go,notify:toast,profile:()=>state.profile,onRecords:records=>{state.data=records;}});
 let closeRouteMaps=()=>{};
-const worldPages = new Set(['village','welcome','avatar','cottage','decorate','atlas','trail','activity','memories','menu']);
+const worldPages = new Set(['village','welcome','avatar','cottage','decorate','atlas','trail','activity','memories','menu','shop','companions']);
 const tabs = [['village','街','home'],['atlas','地図','compass'],['cottage','自分の家','book'],['menu','メニュー','route']];
 const state = { profile:{}, data:{trips:[], journals:[]}, nearby:null, route:null };
 let toastTimer;
@@ -113,14 +115,6 @@ function recordList(items,type,placeholder) {
   return `<ul class="item-list nearby-list">${items.map(item=>`<li class="list-item"><a href="#${type}/${item.id}"><h3>${e(item.title)}</h3><span class="muted">${e(item.date || item.place || '日付未設定')}</span></a>${link(`#${type}/${item.id}`,'開く','arrow','text-link')}</li>`).join('')}</ul>`;
 }
 
-function stamps(id) {
-  const collection = collections.find(item=>item.id === id) ?? collections[0];
-  const marked = state.profile.stamps ?? {};
-  const confirmed = collection.id==='prefecture'?world.visited():new Set();
-  const count = collection.items.filter(item=>confirmed.has(item.id)||marked[stampKey(collection,item)]).length;
-  return page('旅のスタンプ帳','訪れた場所を選んで、旅の足あとを残す。',`${chips(collections.map(item=>item.name),collection.name,label=>`#stamps/${collections.find(item=>item.name===label).id}`)}<section class="surface flow"><h2>${collection.name}</h2><p class="muted">${count} / ${collection.items.length} ${collection.complete ? '訪問済み' : '訪問済み（掲載している一部の場所）'}</p><div class="stamp-grid">${collection.items.map(item=>{const key=stampKey(collection,item);if(confirmed.has(item.id))return `<a class="stamp" aria-label="${item.name}・体験から記録済み" href="#memories">${item.name} ✓</a>`;return `<button type="button" class="stamp" data-action="stamp" data-id="${key}" aria-pressed="${Boolean(marked[key])}">${item.name}</button>`;}).join('')}</div></section>`,{eyebrow:'Travel stamps'});
-}
-
 function about() {
   return page('このプレビューについて','旅を通して、世界や人とつながるアプリを育てています。',`<div class="surface flow"><h2>記録とプライバシー</h2><p>行きたい場所、栞、日記、スタンプ、サンプル投稿への反応・フォロー・保存は、このブラウザーに保存されます。試遊版の日記は自分だけの記録です。端末間の同期、一般・限定公開、利用者どうしの投稿機能は今後の開発範囲です。</p><p>写真は取り込み時に縮小・再生成し、位置情報などの元のメタデータを保存しません。地図リンクを開くと、入力した地名は Google マップに渡ります。</p><h2>風景と読みもの</h2><p>掲載写真は実在する場所で撮影されたものです。各写真に撮影者・撮影場所・出典・利用条件を表示します。ホームの投稿は編集部作成のサンプルです。</p><h2>この端末のデータ</h2><p>ブラウザーのデータ削除で記録が失われることがあります。残したい栞は印刷・PDFやテキストで保存できます。</p><button type="button" class="button button-danger" data-action="clear">この端末のアプリ記録をすべて消去</button></div>`,{narrow:true});
 }
@@ -138,8 +132,8 @@ function render({ navigate = false } = {}) {
   document.documentElement.classList.toggle('motion-off',state.profile.effects?.motion === false);
   const turningStamps = screen === 'stamps' && lastScreen === 'stamps';
   const screens = {
-    home:()=>communityHome(params,state.profile), discover:()=>discover(params), place:()=>placeDetail(id), story:()=>storyDetail(id,params), route:()=>route(params), nearby:()=>nearby(params),
-    my:()=>myTravel(params), trip:()=>recordScreen('trip',id,edit,state.data), journal:()=>recordScreen('journal',id,edit,state.data), stamps:()=>stamps(id), about,
+    home:()=>communityHome(params,state.profile,world.snapshot()), discover:()=>discover(params), place:()=>placeDetail(id), story:()=>storyDetail(id,params), route:()=>route(params), nearby:()=>nearby(params),
+    my:()=>myTravel(params), trip:()=>recordScreen('trip',id,edit,state.data), journal:()=>recordScreen('journal',id,edit,state.data), stamps:()=>stampScreen(id,params,state.profile,world.snapshot()), about,
     saved:()=>savedPage(params), 'opening-photo':openingPhotoPage,
     photos:()=>gallery.screen(id,edit), type:()=>quizPage(state.profile,places,state.profile.quizActivity?world.themes():[]),
     medals:()=>medalPage(state.profile,state.data), mail:()=>mailbox(state.profile,state.data),
@@ -150,9 +144,11 @@ function render({ navigate = false } = {}) {
       if (currentLocation().screen === 'pilot') render();
     });
   }
+  document.body.classList.toggle('game-view',['village','cottage','avatar'].includes(screen));
   setNav(screen);
   view.innerHTML = worldPages.has(screen) ? world.screen(screen,id,params) : (Object.hasOwn(screens,screen) ? screens[screen] : missing)();
   if(worldPages.has(screen)) world.hydrate(screen,params);
+  if(screen==='stamps')mountStampArt(view,state.profile);
   if(screen==='pilot') closeRouteMaps=mountRouteMaps(view,pilot);
   renderPhotos(view,state.data);
   if (navigate && turningStamps) roomMotion(state.profile,view.querySelector('.stamp-grid'),'page');
@@ -238,7 +234,59 @@ function requestLocation(control) {
   },{timeout:12000,maximumAge:60000});
 }
 
+function saveStamp(key,date,kind,control){
+  write(async()=>{
+    state.profile=await update('profile',(p={})=>recordVisit(p,key,date,kind));
+    playRoomSound(state.profile,'stamp');render();
+    roomMotion(state.profile,view.querySelector('.passport-detail canvas'),'stamp');
+    toast('スタンプを押しました。');
+  },control,error=>toast(error.message));
+}
+async function verifyStamp(button){
+  const message=view.querySelector('[data-gps-message]');
+  if(!navigator.geolocation){message.textContent='この端末では測位を利用できません。';return;}
+  button.disabled=true;message.textContent='位置を確認しています…';
+  const failure=()=>{if(button.isConnected){button.disabled=false;message.textContent='現在地を確認できませんでした。自己申告でも記録できます。';}};
+  try{
+    const {default:boundaries}=await import('./data/prefecture-areas.js');
+    if(!button.isConnected)return;
+    const id=button.dataset.stampGps;
+    navigator.geolocation.getCurrentPosition(({coords})=>{
+      if(!button.isConnected)return;
+      button.disabled=false;
+      const key=findStamp(state.profile,'prefecture',id);
+      if(key&&gpsMatches(boundaries[id]??[],coords)){
+        message.textContent='都道府県の範囲内です。';
+        const date=dateInJapan();
+        const accept=document.createElement('button');
+        accept.type='button';accept.className='button button-outline';accept.textContent='今日のGPS確認印を押す';
+        accept.addEventListener('click',()=>saveStamp(key,date,'gps',accept));message.append(' ',accept);
+      }else message.textContent='この都道府県の範囲内と確認できませんでした。';
+    },failure,{enableHighAccuracy:true,maximumAge:0,timeout:14000});
+  }catch{failure();}
+}
+
+view.addEventListener('change',event=>{
+  if(event.target.id==='stamp-category')go('#stamps/'+event.target.value);
+});
 view.addEventListener('click', event => {
+  const gps=event.target.closest('[data-stamp-gps]');
+  if(gps){verifyStamp(gps);return;}
+  const remove=event.target.closest('[data-stamp-remove]');
+  if(remove){
+    const {dataset}=remove;
+    const key=findStamp(state.profile,currentLocation().id,dataset.item);
+    if(key)write(async()=>{
+      state.profile=await update('profile',(p={})=>{
+        const stamps={...p.stamps};
+        if(dataset.stampRemove==='self'&&stamps[key]?.slice(0,10)===dataset.date)delete stamps[key];
+        const list=(p.visits?.[key]??[]).filter(x=>x.kind!==dataset.stampRemove||x.date!==dataset.date);
+        return {...p,stamps,visits:{...p.visits,[key]:list}};
+      });
+      render();
+    },remove);
+    return;
+  }
   const button = event.target.closest('[data-action]');
   if (!button) return;
   const {action,id,value,type} = button.dataset;
@@ -324,18 +372,6 @@ view.addEventListener('click', event => {
       refreshControl(button);
       toast('この端末の反応を更新しました。');
     },button);
-  } else if (action === 'stamp') {
-    if (!state.profile.stamps?.[id]) playRoomSound(state.profile,'stamp');
-    write(async()=>{
-      state.profile = await update('profile',(profile = {})=>{
-        const stamps = {...profile.stamps};
-        if (stamps[id]) delete stamps[id]; else stamps[id] = new Date().toISOString();
-        return {...profile,stamps};
-      });
-      refreshControl(button);
-      if (state.profile.stamps[id]) roomMotion(state.profile,[...view.querySelectorAll('.stamp')].find(stamp=>stamp.dataset.id===id),'stamp');
-      toast(state.profile.stamps[id] ? 'スタンプを押しました。' : 'スタンプを取り消しました。');
-    },button);
   } else if (action === 'delete-record' && confirm('この記録を削除しますか？')) {
     write(async()=>{
       const key = recordGroup(type);
@@ -363,7 +399,17 @@ view.addEventListener('submit', event => {
   event.preventDefault();
   const form = event.target;
   const fields = new FormData(form);
-  if (form.id === 'community-search') {
+  if(form.id==='stamp-search'){
+    go('#stamps/'+form.dataset.book+'?'+new URLSearchParams({q:fields.get('q')}));
+  }else if(form.id==='stamp-custom'){
+    try{
+      const book=personalBook(fields);
+      write(async()=>{state.profile=await update('profile',(p={})=>({...p,customBooks:[...(p.customBooks??[]),book]}));go('#stamps/'+book.id);},event.submitter);
+    }catch(error){toast(error.message);}
+  }else if(form.id==='visit-stamp'){
+    const key=findStamp(state.profile,form.dataset.book,form.dataset.item);
+    if(key)saveStamp(key,fields.get('date'),'self',event.submitter);
+  }else if (form.id === 'community-search') {
     go(homeUrl(form.dataset.feed,fields.get('q').trim()));
   } else if (form.id === 'pilot-form' && pilot) {
     pilotRequest = {from:fields.get('from'),to:fields.get('to'),date:fields.get('date'),time:fields.get('time'),limit:Number(fields.get('limit')),order:fields.get('order'),mixed:fields.has('mixed')};

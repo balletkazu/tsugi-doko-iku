@@ -27,3 +27,9 @@ npm run dev
 ```
 
 開発サーバーは `http://localhost:3000` で `dist/` を配信します。ブラウザー用ソースは `public/` です。ルート直下の `index.html`、`index-1.html`、`index-2.html`、`travel-v03.html` はアプリの参考になった試作版です。
+
+## 今回の着せ替え・旅の生活アップデート
+
+- [スタンプ帳の全件一覧と出典](docs/stamp-catalog.md)
+- [おとも旅・ショップ・共有接続の設計](docs/companion-travel.md)
+- [Android・iOSの歩数と位置情報の設計](docs/native-travel.md)

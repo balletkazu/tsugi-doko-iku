@@ -30,3 +30,9 @@
 | 富山の経路 | 事業者提供の2フィードはCC0。徒歩の道路データは OpenStreetMap contributors、ODbL。表示と再配布時の帰属は時刻表の下に記載。 |
 
 [画像生成に関する利用条件](https://openai.com/policies/terms-of-use/) · [Natural Earth の利用条件](https://www.naturalearthdata.com/about/terms-of-use/) · [地理院タイルの利用条件](https://maps.gsi.go.jp/development/ichiran.html) · [OpenStreetMap の利用条件](https://www.openstreetmap.org/copyright)
+
+## 今回の原画と完成素材
+
+2026年11月25日の利用者提示・承認済みの「キャラクターデザイン案」と「制作イメージ」を、色、頭身、濃い茶の細い輪郭、まるい目、木と紙の質感の基準にした。原画を画面のスプライトに切り貼りせず、Canvasのレイヤーで輪郭、顔立ち、髪、服、道具を組み合わせる描画を制作した。動作で足の振り、姿勢、道具、まばたきや喜びの表情を変える。プレビューは体格の3段階ずつと顔・髪などの選択を即時反映する。
+
+街と家の背景 `street.webp` と `inside.webp` は、この原画を参照してOpenAIの画像生成で本プロジェクトのために新規制作した。ゲーム中の移動経路・施設の判定は独立したHTMLとJavaScript。従来の四季風景と実写は引き続き表示する。スタンプはプロジェクト内でCanvas描画し、各所の公式ロゴを使わず、地形・建物のモチーフで表現する。

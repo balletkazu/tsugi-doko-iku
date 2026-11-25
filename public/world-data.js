@@ -14,29 +14,43 @@ export const regions = ['北海道','東北','関東','中部','近畿','中国'
 export const prefectures = collections[0].items.map((item,i)=>({...item,lat:capitals[i][0],lon:capitals[i][1],
   region:regions[[1,7,14,23,30,35,39,47].findIndex(end=>i<end)]}));
 export const parts = {
-  face:['輪郭','まる','たまご','ふっくら'], eyes:['目','つぶら','たれ目','にっこり'],
-  hair:['髪型','ショート','ボブ','結び髪'], hairColor:['髪色','栗','墨','亜麻','赤茶'],
-  skin:['肌','杏','小麦','褐色','深い褐色'], outfit:['服','森の上着','朱の上着','藍の上着','山吹の上着'],
-  hat:['帽子','なし','山歩き帽','ニット帽'], shoes:['靴','革のブーツ','帆布靴','赤い靴'],
-  glasses:['眼鏡','なし','丸眼鏡','角眼鏡'], bag:['リュック','なし','革のリュック','布のリュック'],
-  accessory:['小物','なし','カメラ','スカーフ']
+  face:['輪郭','まる','たまご','ふっくら','すっきり'],
+  eyes:['目','つぶら','たれ目','にっこり','きりっと','まんまる'],
+  brows:['眉','やわらか','まっすぐ','きりっと','なし'],
+  nose:['鼻','ちいさな鼻','まるい鼻','すっとした鼻'],
+  mouth:['口','ほほえみ','にっこり','まあるい口','きゅっと'],
+  ears:['耳','ふつう','小さめ','大きめ'], beard:['髭','なし','口髭','あご髭','うっすら'],
+  hair:['髪型','ショート','ボブ','結び髪','ゆるいカール','前髪分け','おだんご','刈り上げ'],
+  hairColor:['髪色','栗','墨','亜麻','赤茶','灰','胡桃','青緑'],
+  skin:['肌色','杏','小麦','褐色','深い褐色','薄桃','蜂蜜'],
+  outfit:['洋服','旅の上着','シャツ','パーカ','ワンピース','オーバーオール'],
+  clothColor:['服の色','森','朱','藍','山吹','生成り','すみれ'],
+  pattern:['服の柄','無地','しま','水玉','格子'],
+  body:['体型','ふつう','ほっそり','ふっくら'], height:['身長','ふつう','小柄','高め'],
+  hat:['帽子','なし','山歩き帽','ニット帽','キャップ','ベレー'],
+  shoes:['靴','革のブーツ','帆布靴','赤い靴','長靴'],
+  glasses:['眼鏡','なし','丸眼鏡','角眼鏡','金縁'],
+  bag:['リュック','なし','革のリュック','布のリュック'],
+  accessory:['小物','なし','カメラ','スカーフ','花飾り','イヤリング']
 };
 export const poses = {walk:'歩く',run:'走る',sit:'座る',sleep:'眠る',joy:'喜ぶ',surprise:'驚く',climb:'汗をかく',eat:'食べる',drink:'お茶を飲む',photo:'写真を撮る',read:'本を読む',look:'景色を眺める'};
 export const activities = {
   walk:['徒歩','walk','leaf'], cycle:['自転車','run','wheel'],train:['電車','look','ticket'],bus:['バス','sit','ticket'],boat:['船','look','shell'],plane:['飛行機','sit','wing'],
   hike:['登山','climb','leaf'],peak:['山頂','joy','stone'],spa:['温泉','sit','bowl'],hotel:['宿泊','sleep','lamp'],hut:['山小屋','read','lamp'],
   meal:['ご当地の食事','eat','bowl'],cafe:['カフェ','drink','cup'],beach:['海辺','look','shell'],resort:['休養','sit','shell'],
-  play:['レジャー','joy','wheel'],photo:['風景の撮影','photo','frame'],rain:['雨の散歩','walk','drop'],snow:['雪の散歩','walk','snow']
+  tour:['観光','look','frame'],play:['レジャー','joy','wheel'],photo:['風景の撮影','photo','frame'],rain:['雨の散歩','walk','drop'],snow:['雪の散歩','walk','snow']
 };
-export const items = {plant:'窓辺の鉢植え',books:'積み重ねた本',leaf:'押し葉の標本',shell:'貝殻の標本',wheel:'車輪の置物',ticket:'乗車券の額',wing:'翼の模型',stone:'山石の標本',bowl:'旅の小鉢',lamp:'山小屋のランプ',cup:'陶器のカップ',frame:'小さな写真額',drop:'雨粒の風鈴',snow:'雪の結晶飾り'};
+export const items = {plant:'窓辺の鉢植え',books:'積み重ねた本',leaf:'押し葉の標本',shell:'貝殻の標本',wheel:'車輪の置物',ticket:'乗車券の額',wing:'翼の模型',stone:'山石の標本',bowl:'旅の小鉢',lamp:'山小屋のランプ',cup:'陶器のカップ',frame:'小さな写真額',drop:'雨粒の風鈴',snow:'雪の結晶飾り',fern:'シダの鉢',teaset:'藍染めの茶器',lantern:'星あかりの灯籠',brooch:'朝露のブローチ',rug:'夕焼けの織物'};
 export const starterSlots = ['plant',null,'books'];
-export const avatarDefaults = {name:'旅人',...Object.fromEntries(Object.keys(parts).map(key=>[key,0])),bag:1,hat:1};
+export const avatarDefaults = {design:2,name:'旅人',...Object.fromEntries(Object.keys(parts).map(key=>[key,0])),bag:1,hat:1};
 export function avatarFrom(input = {}) {
-  return Object.fromEntries([['name',String(input.name??'').trim().slice(0,24)||'旅人'],
+  // The first release encoded coat colors in the outfit field.
+  if (input.design !== 2 && input.outfit !== undefined) input = {...input, clothColor:input.outfit, outfit:0};
+  return Object.fromEntries([['design',2],['name',String(input.name??'').trim().slice(0,24)||'旅人'],
     ...Object.entries(parts).map(([key,choices])=>[key,Number.isInteger(input[key]) && input[key]>=0 && input[key]<choices.length-1 ? input[key] : avatarDefaults[key]])]);
 }
 export function inventory(game) {
-  return [...new Set(['plant','books',...(game.entries??[]).map(entry=>activities[entry.activity]?.[2]).filter(Boolean)])];
+  return [...new Set(['plant','books',...(game.economy?.owned??[]),...(game.entries??[]).map(entry=>activities[entry.activity]?.[2]).filter(Boolean)])];
 }
 export function estimateActivity(previous,current) {
   if (!Number.isFinite(current.accuracy) || current.accuracy>80) return {kind:null,confidence:'低',reason:'位置の誤差が大きいため、活動を選んでください。'};

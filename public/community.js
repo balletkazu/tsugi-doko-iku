@@ -1,3 +1,4 @@
+import {companionFeed} from './travel-life.js';
 import { escapeHtml as e } from './core.js';
 import { communityTabs, editorial, feedPosts, reactionTypes, samplePosts, searchPosts } from './community-data.js';
 import { photoCredit, photoFigure, photoFor, renderPhoto } from './photos.js';
@@ -55,11 +56,11 @@ function card(post, profile, returnTo) {
 
 export const communityCards = (posts, profile, returnTo) => `<div class="post-grid">${posts.map(post=>card(post,profile,returnTo)).join('')}</div>`;
 
-export function communityHome(params, profile) {
-  const tab = Object.hasOwn(labels, params.get('feed')) ? params.get('feed') : 'all';
+export function communityHome(params, profile, game={}) {
+  const tab = (params.get('feed')==='companions'||Object.hasOwn(labels, params.get('feed'))) ? params.get('feed') : 'all';
   const query = (params.get('q') ?? '').slice(0,80);
   const results = searchPosts(feedPosts(samplePosts,tab,profile),query);
-  const cards = results.length ? communityCards(results,profile,tab) :
+  const cards = tab==='companions'?companionFeed(game,query):results.length ? communityCards(results,profile,tab) :
     tab === 'following' && !(profile.sampleFollows ?? []).includes(editorial.id) ? `<div class="surface flow following-empty">
       <h2>フォロー中のサンプルはありません</h2>
       <p>編集部のサンプルをフォローすると、ここに表示されます。</p>${followButton(profile)}
@@ -67,14 +68,15 @@ export function communityHome(params, profile) {
   return `<section class="home-section community" aria-labelledby="community-title">
     <div class="section-title community-title"><h1 id="community-title">旅人のひとこま</h1>
       ${link('#photos/new','投稿を書く','edit')}</div>
+    <div class="plaza-invitation"><span>${icon('send')}</span><div><h2>おともを募集する</h2><p>出発日と行き先を旅の掲示板に書く。</p></div>${link('#companions','おとも旅へ','arrow','text-link')}</div>
     <form id="community-search" class="search" data-feed="${tab}">
       <label><span class="visually-hidden">投稿やハッシュタグを検索</span><input type="search" name="q" value="${e(query)}" maxlength="80" placeholder="投稿・ #タグ を探す"></label>
       <button class="button button-outline">検索</button>
     </form>
     <nav class="feed-nav" aria-label="旅の投稿の種類">
-      ${communityTabs.map(([id,label])=>`<a href="${e(homeUrl(id,query))}" class="feed-tab" ${id === tab ? 'aria-current="page"' : ''}>${label}</a>`).join('')}
+      ${[...communityTabs,['companions','おとも募集']].map(([id,label])=>`<a href="${e(homeUrl(id,query))}" class="feed-tab" ${id === tab ? 'aria-current="page"' : ''}>${label}</a>`).join('')}
     </nav>
-    <div class="feed-meta"><p class="feed-note">編集部のサンプル投稿${query ? ` · ${results.length}件` : ''}</p>
+    <div class="feed-meta"><p class="feed-note">${tab==='companions'?'この端末に保存した募集':'編集部のサンプル投稿'+(query ? ` · ${results.length}件` : '')}</p>
       ${query ? link(homeUrl(tab),'検索をクリア',null,'text-link') : link('#opening-photo','ここは、どこ？',null,'text-link')}
     </div>
     ${cards}

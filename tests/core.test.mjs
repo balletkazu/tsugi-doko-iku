@@ -48,7 +48,15 @@ test('collection identifiers are unique and include all 47 prefectures', () => {
   const keys = collections.flatMap(collection=>collection.items.map(item=>stampKey(collection,item)));
   assert.equal(keys.length,new Set(keys).size);
   assert.match(keys[0],/^JP\/prefecture\/JP-01$/);
-  assert.equal(collections.filter(collection=>collection.complete).length,1);
+  const counts={'prefecture':47,'national-park':35,'quasi-park':58,'world-heritage':27,'mountain-100':100,'unesco-geopark':11,'biosphere':10};
+  for(const [id,count] of Object.entries(counts)){
+    const book=collections.find(c=>c.id===id);
+    assert.equal(book.items.length,count);
+    assert.ok(book.complete&&book.source);
+    assert.ok(book.items.every(item=>item.motif&&(id==='prefecture'||item.area&&item.coords?.length)));
+  }
+  const all=collections.flatMap(x=>x.items.map(i=>i.name));
+  for(const name of ['御嶽山国定公園','飛鳥・藤原の宮都','Mine秋吉台ユネスコ世界ジオパーク'])assert.ok(all.includes(name));
 });
 
 test('private record content is escaped before placement in HTML', () => {
@@ -246,4 +254,58 @@ test('sample author controls affect the finite timeline without altering public 
   assert.deepEqual(feedPosts(samplePosts,'all',{sampleMuted:true}),[]);
   assert.deepEqual(feedPosts(samplePosts,'all',{sampleBlocked:true}),[]);
   assert.equal(new Map(reactionTypes).get(6),'美味しそう');
+});
+
+test('daily step rewards and item purchases are stored once without deadlines',async()=>{
+  const {economy,recordSteps,purchase,balance}=await import('../public/travel-life.js');
+  const coins=economy({});
+  const earned=recordSteps(coins,'2024-01-11',4000,'2026-11-25');
+  assert.equal(balance(earned),32);
+  assert.equal(balance(recordSteps(earned,'2024-01-11',5900,'2026-11-25')),32);
+  assert.equal(balance(recordSteps(earned,'2024-01-11',500,'2026-11-25')),32);
+  assert.throws(()=>recordSteps(coins,'2026-11-26',100,'2026-11-25'));
+  const bought=purchase(earned,'fern');
+  assert.deepEqual(bought.owned,['fern']);
+  assert.equal(balance(bought),20);
+  assert.throws(()=>purchase(bought,'fern'));assert.throws(()=>purchase(bought,'lantern'));
+});
+
+test('companion quotas count distinct joins and preserve records after the day ends',async()=>{
+  const {addDemoJoin,lifeTrips,companionLimits}=await import('../public/travel-life.js');
+  let trips=lifeTrips({});const day='2026-11-25';
+  for(const id of ['violet','wind','clover','nagi','sio'])trips=addDemoJoin(trips,id,day);
+  assert.equal(addDemoJoin(trips,'nagi',day),trips);
+  assert.throws(()=>addDemoJoin(trips,'haku',day));
+  assert.equal(addDemoJoin(trips,'haku','2026-11-26').joins.length,6);
+  assert.deepEqual(companionLimits.paid,{daily:10,guests:30});
+});
+
+test('passport keeps verified, self-reported and game records separate',async()=>{
+  const {recordVisit,gpsMatches,entryKinds}=await import('../public/stamp-book.js');
+  const {default:boundaries}=await import('../public/data/prefecture-areas.js');
+  const key='JP/prefecture/JP-16',date='2026-11-25';
+  assert.equal(gpsMatches(boundaries['JP-16'],{latitude:36.62,longitude:137.19,accuracy:8}),true);
+  assert.equal(gpsMatches(boundaries['JP-26'],{latitude:36.62,longitude:137.19,accuracy:8}),false);
+  assert.equal(gpsMatches(boundaries['JP-16'],{latitude:36.62,longitude:137.19,accuracy:100}),false);
+  let p=recordVisit({},key,date,'gps',date);p=recordVisit(p,key,'2023-02-19','self',date);
+  assert.equal(recordVisit(p,key,date,'gps',date),p);
+  assert.throws(()=>recordVisit(p,key,'2023-02-30','self',date));
+  const all=entryKinds(p,key,{id:'JP-16'},{explored:['JP-16'],companions:{joins:[{pref:'JP-16',day:date}]}});
+  assert.deepEqual(all.map(x=>x.kind),['self','gps','virtual','companion']);
+});
+
+test('avatar migration keeps the old coat color and the new clothing choice',async()=>{
+  const {avatarFrom}=await import('../public/world-data.js');
+  assert.equal(avatarFrom({outfit:2}).clothColor,2);
+  assert.equal(avatarFrom({outfit:2}).outfit,0);
+  assert.equal(avatarFrom({design:2,outfit:3,clothColor:4}).outfit,3);
+});
+
+test('nearby transit evidence rejects weak positions and reports overlapping bus and rail',async()=>{
+  const {nearbyTransport,toyamaMobility}=await import('../public/mobility.js');
+  const a=[36.7,137.21],b=[36.7,137.213];
+  const samples=[[36.7,137.2101],[36.7,137.2113],[36.7,137.2127]].map(([lat,lon])=>({lat,lon,accuracy:9}));
+  assert.deepEqual(nearbyTransport(samples,{train:[[a,b]],bus:[[a,b]]}),['train','bus']);
+  assert.deepEqual(nearbyTransport(samples.map(x=>({...x,accuracy:85})),{train:[[a,b]],bus:[]}),[]);
+  const network=await toyamaMobility();assert.ok(network.train.length&&network.bus.length);
 });

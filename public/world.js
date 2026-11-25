@@ -2,22 +2,22 @@ import {escapeHtml as e} from './core.js';
 import {icon} from './ui.js';
 import {places} from './data.js';
 import {update,importPhoto} from './storage.js';
-import {parts,avatarDefaults,avatarFrom,activities,poses,prefectures,regions,inventory,items,starterSlots,estimateActivity,newEntry} from './world-data.js';
+import {parts,avatarDefaults,avatarFrom,activities,prefectures,regions,inventory,items,starterSlots,estimateActivity,newEntry} from './world-data.js';
+import {dressingRoom,mountDressing} from './dressing-room.js';
+import {gameStage,mountStage} from './game-stage.js';
 import {animateWorld,character} from './world-art.js';
+import {economy,reward,purchase,recordSteps,shopScreen,lifeTrips,companionScreen,parseInvitation,addDemoJoin,completeDemoHost,downloadCompanionPostcard,mountLife,dateInJapan} from './travel-life.js';
+import {nearbyTransport,toyamaMobility} from './mobility.js';
 import {playRoomSound} from './room.js';
 import {atlas,practicalMap,practicalMarkup} from './world-map.js';
 
 const destinations=[
   ['#home','広場','旅人の写真と投稿','heart'],['#pilot','駅','富山市の乗換案内','route'],['#discover','旅行案内所','旅先と寄り道','compass'],
   ['#my?view=list','図書館','日記と旅の栞','book'],['#photos','アトリエ','写真の取り込み・投稿下書き','edit'],
-  ['#stamps','博物館','訪問スタンプ帳','stamp'],['#mail','郵便局','旅のお知らせ','send'],['#memories','美術館','自分の旅の絵日記','pin']
+  ['#stamps','博物館','訪問スタンプ帳','stamp'],['#companions','おとも旅','旅の募集とおみやげ','send'],['#mail','郵便局','旅のお知らせ','send'],['#shop','旅の店','コイン・歩数・道具','stamp'],['#memories','美術館','自分の旅の絵日記','pin']
 ];
-const residents={
-    keeper:{name:'絵はがき屋のシオ',line:'絵日記を一枚ひらいてごらん。写真と旅人をいっしょに、一枚の絵はがきにできるよ。',url:'#memories',label:'絵日記をひらく',look:{outfit:1,hat:0,hair:1,hairColor:1,accessory:1}},
-    conductor:{name:'車掌のナギ',line:'駅の窓口では富山の電車とバスを調べられるよ。どれくらい歩きたいかも教えてね。',url:'#pilot',label:'駅の窓口へ',look:{outfit:2,hat:2,hairColor:0,skin:1}}
-};
 const guideText=['はじめまして！','この世界には、まだあなたの知らない場所がたくさんあります。','これから一緒に、いろんな場所へ旅に出て、いろんなものに出会いましょう。'];
-const person=(pose='look',extra='')=>`<canvas data-person data-pose="${pose}" width="32" height="32" aria-hidden="true" ${extra}></canvas>`;
+const person=(pose='look',extra='')=>`<canvas data-person data-pose="${pose}" width="96" height="96" aria-hidden="true" ${extra}></canvas>`;
 const btn=(op,label,cls='world-btn')=>`<button type="button" data-world="${op}" class="${cls}">${label}</button>`;
 const a=(url,label,cls='world-btn alt')=>`<a href="${e(url)}" class="${cls}">${label}</a>`;
 const stepLink=(url,name,sub,glyph)=>`<a href="${e(url)}" class="world-door"><i>${icon(glyph)}</i><span><strong>${name}</strong><small>${sub}</small></span><b aria-hidden="true">›</b></a>`;
@@ -35,7 +35,7 @@ const where=(entry)=>[byId(entry.pref)?.name,entry.place].filter(Boolean).join('
 const entryText=(entry)=>`${where(entry)}で${activities[entry.activity][0]}を体験した。${items[activities[entry.activity][2]]}を旅の記念に持ち帰った。`;
 
 export function createWorld(root,{go,notify,profile,onRecords}){
-  let game={},clean=()=>{},busy=false,detected=null,stopLocation=()=>{},stopMotion=()=>{},motionActive=false,motionHint='',draftAvatar;
+  let game={},clean=()=>{},busy=false,detected=null,stopLocation=()=>{},stopMotion=()=>{},motionActive=false,motionHint='';
   const avatar=()=>({...avatarFrom(game.avatar??avatarDefaults),pin:inventory(game).includes(game.pin)?game.pin:null});
   const entries=()=>game.entries??[];
   const slots=()=> (game.slots??starterSlots).map(id=>inventory(game).includes(id)?id:null);
@@ -43,7 +43,7 @@ export function createWorld(root,{go,notify,profile,onRecords}){
     if(busy)return;
     busy=true;
     try{game=await update('world',(latest={})=>change(latest));done?.();}
-    catch(error){notify(error.message?.includes('24MB')?error.message:'保存できませんでした。ブラウザーの空き容量と保存設定をご確認ください。');}
+    catch(error){notify(error instanceof DOMException?'保存できませんでした。ブラウザーの空き容量と保存設定をご確認ください。':error.message);}
     finally{busy=false;}
   };
   function intro(){
@@ -51,29 +51,18 @@ export function createWorld(root,{go,notify,profile,onRecords}){
       `<div class="letter"><span class="folio">はじめの一歩　1 / 3</span><h2>${guideText[0]}</h2><p>${guideText[1]}</p><div class="world-actions">${a('#avatar?guide=1','旅人をつくる　→','world-btn')}${guideFooter()}</div></div>`);
   }
   function village(){
-    return frame('旅人たちの街','風待ちの街',art('village',characterSpot('walk')+Object.entries(residents).map(([id,n])=>`<button type="button" class="resident ${id}" data-world="greet" data-id="${id}" aria-label="${n.name}に話しかける">${person('look',`data-resident="${id}"`)}</button>`).join('')+
-      `<a class="house-pin" href="#cottage">⌂ 自分の家</a><a class="station-pin" href="#pilot">駅 ›</a><a class="plaza-pin" href="#home">広場 ›</a>`)+
-      `<div id="resident-note" role="status"></div><div class="ticket"><div>${person('look')}</div><span><small>今日の旅人</small><strong>${e(avatar().name)}</strong></span>${a('#activity','体験を記録　＋','world-btn')}</div>
-      <div class="world-title"><h2>街を歩く</h2>${a('#menu','メニュー一覧','world-text')}</div><div class="door-grid">${destinations.map(d=>stepLink(...d)).join('')}</div>`);
+    return gameStage('street','風待ちの街',avatar());
   }
   function editor(guided){
-    const who=avatar();
-    return frame(guided?'はじめの一歩　2 / 3':'自分の家の鏡','旅人の身支度',`<form id="avatar-form" class="world-form" data-guide="${guided}">
-      <div class="portrait-card"><div class="portrait-board">${person('look')}</div><label>旅人の名前<input name="name" required maxlength="24" value="${e(who.name)}"></label></div>
-      <div class="wardrobe">${Object.entries(parts).map(([key,[label,...values]])=>`<label>${label}<select name="${key}" aria-label="${label}">${values.map((v,i)=>choice(i,v,i===who[key])).join('')}</select></label>`).join('')}</div>
-      <label>身につける記念品<select name="pin" aria-label="身につける記念品">${choice('','なし',!game.pin)}${inventory(game).filter(id=>!['books','plant'].includes(id)).map(id=>choice(id,items[id]+'のバッジ',game.pin===id)).join('')}</select></label>
-      <label>動きを試す<select id="pose-choice">${Object.entries(poses).map(([id,name])=>choice(id,name,id==='look')).join('')}</select></label>
-      <div class="world-actions"><button class="world-btn">${guided?'この姿で家へ　→':'着替えを保存'}</button>${guided?guideFooter():a('#cottage','家へ戻る','world-text')}</div></form>`);
+    return dressingRoom(avatar(),inventory(game).filter(id=>!['books','plant'].includes(id)),guided);
   }
   function wallPhoto(){
     return entries().some(x=>x.id===game.wallPhoto && x.photo)?`<img class="wall-photo" data-memory-photo="${e(game.wallPhoto)}" alt="家に飾った旅の写真">`:'';
   }
   function cottage(guided){
-    return frame(guided?'はじめの一歩　3 / 3':'風待ちの街のはずれ',`${e(avatar().name)}の家`,art('cottage',wallPhoto()+slots().map((id,i)=>id?`<div class="floor-item pos-${i}">${itemCanvas(id)}</div>`:'').join('')+characterSpot('read','data-idle')+
-      '<button type="button" class="floor-walk" data-world="walk-home" aria-label="床をタップして旅人を移動"></button>')+
-      (guided?`<div class="letter"><p>${guideText[2]}</p><div class="world-actions">${a('#atlas?guide=1','地図をひらく　→','world-btn')}${guideFooter()}</div></div>`:
-      `<div class="world-actions">${a('#decorate','模様替え','world-btn')}${a('#avatar','着替える')}${a('#atlas','旅に出る')}</div>`)+
-      `<div class="door-grid">${stepLink('#memories','旅の絵日記','持ち帰った思い出','book')}${stepLink('#type','旅人の鏡','自分の旅人タイプ','compass')}${stepLink('#room-settings','音と動き','演出を調整','edit')}${stepLink('#welcome','はじめの一歩','案内をもう一度','home')}</div>`);
+    const guide=guided?`<section class="stage-guide"><p>${guideText[2]}</p><div class="world-actions">${a('#atlas?guide=1','地図をひらく　→','world-btn')}${guideFooter()}</div></section>`:'';
+    const objects=wallPhoto()+slots().map((id,i)=>id?`<a href="#decorate" aria-label="${items[id]}の配置を変える" class="floor-item pos-${i}">${itemCanvas(id)}</a>`:'').join('');
+    return gameStage('inside',avatar().name+'の家',avatar(),objects,guide);
   }
   function decorate(){
     const contents=slots(), owned=inventory(game);
@@ -114,14 +103,15 @@ export function createWorld(root,{go,notify,profile,onRecords}){
     switch(name){
       case 'village':return village();case 'welcome':return intro();case 'avatar':return editor(params.get('guide')==='1');case 'cottage':return cottage(params.get('guide')==='1');
       case 'decorate':return decorate();case 'atlas':return mapPage(params);case 'trail':return (game.explored??[]).includes(id)?trail(id):mapPage(params);
+      case 'shop':return shopScreen(game);case 'companions':return companionScreen(game);
       case 'activity':return activity();case 'memories':return memories();case 'menu':return menu();
     }
   }
-  function renderActivity(id){
+  function renderActivity(id,tentative=false){
     const c=root.querySelector('.activity-preview canvas');if(!c)return;
     c.dataset.pose=activities[id]?.[1]??'look';c.dataset.activity=id;
     character(c,avatar(),c.dataset.pose,0,id);
-    root.querySelector('#activity-label').textContent=activities[id]?`旅人も「${activities[id][0]}」を体験します。`:'体験を選ぶと、旅人も動きます。';
+    root.querySelector('#activity-label').textContent=activities[id]?(tentative?`旅人の動きの候補「${activities[id][0]}」。`:`旅人も「${activities[id][0]}」を体験します。`):'体験を選ぶと、旅人も動きます。';
   }
   async function motion(button){
     if(motionActive){stopMotion();return;}
@@ -146,16 +136,30 @@ export function createWorld(root,{go,notify,profile,onRecords}){
     if(button.dataset.active){stopLocation();return;}
     const status=root.querySelector('#sense-status');
     if(!navigator.geolocation){status.textContent='この端末では測位できません。体験を手入力できます。';return;}
-    let previous=null,watch,timeout,active=true;
+    let previous=null,watch,timeout,active=true,network=null;
+    const observations=[];
+    toyamaMobility().then(result=>{if(active)network=result;}).catch(()=>{});
     button.dataset.active='1';button.textContent='測位を止める';status.textContent='測位しています…';
-    stopLocation=()=>{active=false;if(watch!==undefined)navigator.geolocation.clearWatch(watch);clearTimeout(timeout);previous=null;detected=null;delete button.dataset.active;button.textContent='現在地から候補を探す';status.textContent='測位を終了しました。';stopLocation=()=>{};};
+    stopLocation=()=>{active=false;if(watch!==undefined)navigator.geolocation.clearWatch(watch);clearTimeout(timeout);previous=null;observations.length=0;detected=null;delete button.dataset.active;button.textContent='現在地から候補を探す';status.textContent='測位を終了しました。';stopLocation=()=>{};};
     watch=navigator.geolocation.watchPosition(position=>{
       if(!active)return;
       const {latitude:lat,longitude:lon,accuracy,speed,altitude:alt,altitudeAccuracy:altError}=position.coords;
       const current={lat,lon,accuracy,speed,alt,altError,time:position.timestamp};
       const next=estimateActivity(previous,current);previous=current;
+      observations.push(current);
+      if(observations.length>3)observations.shift();
+      const candidates=nearbyTransport(observations,network);
+      if(!next.kind&&candidates.length===1){
+        next.kind=candidates[0];next.confidence='低';next.reason='富山の公開経路に沿っています。同行している交通手段をご確認ください。';
+      }else if(!next.kind&&candidates.length>1){
+        next.reason='富山のバスと路面電車の経路が近いため、実際に乗った交通手段を選んでください。';
+      }
       const near=accuracy<=80?places.find(p=>Math.hypot((p.lat-lat)*111200,(p.lng-lon)*111200*Math.cos(lat*Math.PI/180))+accuracy<250):null;
+      if(!next.kind&&near&&observations.length>=2&&Number.isFinite(speed)&&speed<2){
+        next.kind='tour';next.confidence='低';next.reason='掲載地点の近くです。観光中かどうかはご自身で選べます。';
+      }
       detected=next.kind;
+      if(!root.querySelector('#activity-form [name=activity]').value&&detected)renderActivity(detected,true);
       status.replaceChildren(document.createTextNode(`確信度：${next.confidence}。 ${next.reason}${motionHint?' '+motionHint+'。':''}${near?' 掲載地点「'+near.name+'」の近辺です。':''}`));
       if(detected){const use=document.createElement('button');use.type='button';use.className='world-text';use.dataset.world='use-detection';use.textContent=activities[detected][0]+'を選ぶ';status.append(use);}
     },()=>{if(active){stopLocation();status.textContent='位置情報を取得できません。手入力で記録できます。';}},{enableHighAccuracy:true,maximumAge:0,timeout:15000});
@@ -165,18 +169,21 @@ export function createWorld(root,{go,notify,profile,onRecords}){
     const reduced=profile().effects?.motion===false || matchMedia('(prefers-reduced-motion: reduce)').matches;
     const revokes=[];let closeMap=()=>{};
     for(const c of root.querySelectorAll('[data-entry]'))c._avatar=entries().find(x=>x.id===c.dataset.entry)?.avatar;
-    for(const c of root.querySelectorAll('[data-resident]'))c._avatar=avatarFrom({...avatarDefaults,...residents[c.dataset.resident].look});
+    const actor=root.querySelector('.stage-player canvas');
+    if(actor)actor._avatar=avatar();
+    mountDressing(root,avatar());
+    const closeStage=mountStage(root,go,reduced);
     const stopArt=animateWorld(root,avatar(),reduced);
+    mountLife(root,avatar());
     for(const img of root.querySelectorAll('[data-memory-photo]')){const blob=entries().find(x=>x.id===img.dataset.memoryPhoto)?.photo;if(blob){img.src=URL.createObjectURL(blob);revokes.push(img.src);}}
     const selector=root.querySelector('#pref-choice');
     if(selector){const p=byId(selector.value),canvas=root.querySelector('#japan-map');if(canvas)atlas(canvas,p.id,id=>changePref(id,params));else closeMap=practicalMap(root.querySelector('.tile-widget'),[p.lat,p.lon]);}
-    clean=()=>{stopArt();stopLocation();stopMotion();closeMap();revokes.forEach(url=>URL.revokeObjectURL(url));draftAvatar=null;};
+    clean=()=>{stopArt();closeStage();stopLocation();stopMotion();closeMap();revokes.forEach(url=>URL.revokeObjectURL(url));};
   }
   function changePref(id,params=new URLSearchParams(location.hash.split('?')[1])){params.set('pref',id);go('#atlas?'+params);}
-  function fromForm(form){const fields=new FormData(form);return avatarFrom({name:fields.get('name'),...Object.fromEntries(Object.keys(parts).map(key=>[key,Number(fields.get(key))]))});}
   root.addEventListener('change',event=>{
     const el=event.target;
-    if(el.closest('#avatar-form')){const c=root.querySelector('.portrait-board canvas');draftAvatar={...fromForm(el.form),pin:el.form.elements.pin.value};c._avatar=draftAvatar;c.dataset.pose=root.querySelector('#pose-choice').value;character(c,draftAvatar,c.dataset.pose);}
+    if(el.dataset.world==='companion-consent')save(g=>({...g,companions:{...lifeTrips(g),automatic:el.checked}}));
     if(el.id==='pref-choice')changePref(el.value);
     if(el.matches('#activity-form [name=activity]'))renderActivity(el.value);
     if(el.matches('#decor-form select[name^=slot]')){const pos=Number(el.name.slice(-1));const dest=root.querySelector('.floor-item.pos-'+pos);dest.innerHTML=el.value?itemCanvas(el.value):'';animateWorld(dest,avatar(),true);}
@@ -184,9 +191,34 @@ export function createWorld(root,{go,notify,profile,onRecords}){
   root.addEventListener('submit',async event=>{
     const form=event.target, fields=new FormData(form),sourceHash=location.hash;
     const afterSave=hash=>{if(form.isConnected&&location.hash===sourceHash)go(hash);};
-    if(!['avatar-form','activity-form','decor-form'].includes(form.id))return;
+    if(form.dataset.hostDraft){
+      const id=form.dataset.hostDraft;
+      await save(g=>{
+        const trips=completeDemoHost(lifeTrips(g),id,fields.getAll('guest'));
+        return {...g,companions:trips,economy:reward(economy(g),'practice-host:'+id,8,'試遊のおともを連れた旅')};
+      },()=>afterSave('#companions'));
+      return;
+    }
+    if(!['avatar-form','activity-form','decor-form','step-goal','step-log','companion-draft'].includes(form.id))return;
     event.preventDefault();
-    if(form.id==='avatar-form'){const who=fromForm(form);const pin=fields.get('pin');await save(g=>({...g,avatar:who,pin:inventory(g).includes(pin)?pin:null}),()=>afterSave(form.dataset.guide==='true'?'#cottage?guide=1':'#cottage'));return;}
+    if(form.id==='step-goal'){
+      const goal=Number(fields.get('goal'));
+      if(Number.isInteger(goal)&&goal>=100&&goal<=100000)await save(g=>({...g,economy:{...economy(g),goal}}),()=>notify('歩数目標を保存しました。'));
+      return;
+    }
+    if(form.id==='step-log'){
+      const date=fields.get('date'),value=Number(fields.get('steps'));
+      await save(g=>({...g,economy:recordSteps(economy(g),date,value)}),()=>{afterSave('#shop');notify('歩数を記録しました。');});
+      return;
+    }
+    if(form.id==='companion-draft'){
+      try{
+        const invitation={...parseInvitation(fields),id:crypto.randomUUID()};
+        await save(g=>{const trips=lifeTrips(g);return {...g,companions:{...trips,drafts:[invitation,...trips.drafts]}};},()=>afterSave('#companions'));
+      }catch(error){notify(error.message);}
+      return;
+    }
+    if(form.id==='avatar-form'){const draft=form.readAppearance();const who=avatarFrom(draft);const pin=draft.pin;await save(g=>({...g,avatar:who,pin:inventory(g).includes(pin)?pin:null}),()=>afterSave(form.dataset.guide==='true'?'#cottage?guide=1':'#cottage'));return;}
     if(form.id==='decor-form'){
       const values=[0,1,2].map(i=>fields.get('slot'+i)||null);
       if(new Set(values.filter(Boolean)).size!==values.filter(Boolean).length){notify('同じ記念品は一か所に飾れます。');return;}
@@ -200,18 +232,24 @@ export function createWorld(root,{go,notify,profile,onRecords}){
       await save(g=>{
         const prior=g.entries??[];
         if(photo && prior.reduce((n,x)=>n+(x.photo?.size??0),photo.size)>24*1024*1024)throw new Error('絵日記の写真は合計24MBまでです。写真を外すか、不要な記録を整理してください。');
-        return {...g,entries:[entry,...prior]};
+        return {...g,entries:[entry,...prior],economy:reward(economy(g),'trip:'+dateInJapan(new Date(entry.date))+':'+entry.activity,12,'現実の旅の記録')};
       },()=>{if(form.isConnected)go('#memories');notify(items[activities[subject][2]]+'を持ち帰りました。');});
     }catch(err){notify(err.message);}finally{delete form.dataset.saving;if(button)button.disabled=false;}
   });
   root.addEventListener('click',async event=>{
     const b=event.target.closest('[data-world]');if(!b)return;
     switch(b.dataset.world){
-      case 'greet':{const n=residents[b.dataset.id];root.querySelector('#resident-note').innerHTML=`<div class="letter"><small>街の案内役</small><h2>${n.name}</h2><p>${n.line}</p>${a(n.url,n.label,'world-text')}</div>`;break;}
+      case 'buy':await save(g=>({...g,economy:purchase(economy(g),b.dataset.id)}),()=>{go('#shop');notify(items[b.dataset.id]+'を購入しました。');});break;
+      case 'close-draft':await save(g=>{const trips=lifeTrips(g);return {...g,companions:{...trips,drafts:trips.drafts.map(d=>d.id===b.dataset.id?{...d,closed:true}:d)}};},()=>go('#companions'));break;
+      case 'demo-join':await save(g=>{
+        const trips=addDemoJoin(lifeTrips(g),b.dataset.id);
+        return {...g,companions:trips,economy:reward(economy(g),'practice:'+dateInJapan()+':'+b.dataset.id,5,'試遊のおとも旅')};
+      },()=>go('#companions'));break;
+      case 'thank-companions':await save(g=>{const trips=lifeTrips(g);return {...g,companions:{...trips,thanks:[...new Set([...trips.thanks,b.dataset.id])]}};},()=>go('#companions'));break;
+      case 'demo-postcard':try{await downloadCompanionPostcard(b.closest('.companion-postcard'));}catch(error){notify(error.message);}break;
       case 'field-action':{const c=root.querySelector('.scene-person canvas');const pose=b.dataset.pose;c.dataset.pose=pose;character(c,avatar(),pose);root.querySelector('#field-voice').textContent={walk:'小道に足を進めました。',photo:'旅人は風景にカメラを向けました。',sit:'腰を下ろして、景色を眺めています。'}[pose];break;}
       case 'skip':await save(g=>({...g,started:true}),()=>go('#village'));break;
       case 'explore':{playRoomSound(profile(),'stamp');const id=root.querySelector('#pref-choice').value;await save(g=>({...g,started:true,lastPref:id,explored:[...new Set([...(g.explored??[]),id])]}),()=>go('#trail/'+id));break;}
-      case 'walk-home':{const r=b.getBoundingClientRect(),p=root.querySelector('.scene-person');const x=event.detail?100*(event.clientX-r.left)/r.width:50;p.style.left=Math.max(10,Math.min(90,x))+'%';const c=p.querySelector('canvas');c.dataset.pose='walk';character(c,avatar(),'walk');break;}
       case 'motion':await motion(b);break;
       case 'sense':sense(b);break;
       case 'use-detection':if(detected){root.querySelector('#activity-form [name=activity]').value=detected;renderActivity(detected);}break;
@@ -234,14 +272,14 @@ export function createWorld(root,{go,notify,profile,onRecords}){
   });
   document.addEventListener('visibilitychange',()=>{if(document.hidden){stopLocation();stopMotion();}});
   window.addEventListener('pagehide',()=>{stopLocation();stopMotion();});
-  return {visited:()=>new Set(entries().map(x=>x.pref).filter(Boolean)),themes:()=>entries().map(x=>({hike:'山',peak:'山',beach:'海・島',boat:'海・島',spa:'温泉',walk:'自然',photo:'文化・アート'})[x.activity]).filter(Boolean),load:data=>{game=data??{};},screen,hydrate,release:()=>{clean();clean=()=>{};}};
+  return {snapshot:()=>game,visited:()=>new Set(entries().map(x=>x.pref).filter(Boolean)),themes:()=>entries().map(x=>({hike:'山',peak:'山',beach:'海・島',boat:'海・島',spa:'温泉',walk:'自然',photo:'文化・アート'})[x.activity]).filter(Boolean),load:data=>{game=data??{};},screen,hydrate,release:()=>{clean();clean=()=>{};}};
 }
 async function postcard(entry,mime='image/png'){
   const canvas=document.createElement('canvas');canvas.width=840;canvas.height=780;
   const ctx=canvas.getContext('2d');ctx.fillStyle='#f5ecd6';ctx.fillRect(0,0,840,780);
   const img=new Image();const url=entry.photo?URL.createObjectURL(entry.photo):'./assets/world/trail.webp';
   try{img.src=url;await img.decode();const scale=Math.min(792/img.width,470/img.height);ctx.drawImage(img,(840-img.width*scale)/2,26+(470-img.height*scale)/2,img.width*scale,img.height*scale);}finally{if(entry.photo)URL.revokeObjectURL(url);}
-  const sprite=document.createElement('canvas');sprite.width=sprite.height=32;character(sprite,entry.avatar,activities[entry.activity][1],0,entry.activity);ctx.imageSmoothingEnabled=false;ctx.drawImage(sprite,39,511,130,130);
+  const sprite=document.createElement('canvas');sprite.width=sprite.height=128;character(sprite,entry.avatar,activities[entry.activity][1],0,entry.activity);ctx.imageSmoothingEnabled=false;ctx.drawImage(sprite,39,511,130,130);
   ctx.fillStyle='#344b43';ctx.font='24px sans-serif';ctx.fillText(dateLabel(entry.date),185,556);ctx.font='bold 38px serif';ctx.fillText(where(entry),185,618,604);
   ctx.font='25px serif';ctx.fillText(activities[entry.activity][0]+'を体験した。',54,688,732);ctx.font='21px sans-serif';ctx.fillText('旅の絵日記　・　'+entry.avatar.name,54,743,732);
   const blob=await new Promise(resolve=>canvas.toBlob(resolve,mime,.85));if(!blob)throw new Error('画像を作成できませんでした。');
