@@ -54,3 +54,14 @@ export function feedPosts(posts, tab, profile = {}) {
     (tab === 'following' ? (profile.sampleFollows ?? []).includes(post.author.id) : post.kind === tab)
   ));
 }
+
+const normalize = value => value.normalize('NFKC').toLocaleLowerCase('ja');
+
+export function searchPosts(posts, query) {
+  const terms = normalize(query.trim()).split(/\s+/).filter(Boolean);
+  return posts.filter(post=>terms.every(term=>{
+    const tags = post.tags.map(normalize);
+    if (term.startsWith('#')) return tags.includes(term.slice(1));
+    return normalize([post.title,post.intro,...post.body,...post.tags].join(' ')).includes(term);
+  }));
+}

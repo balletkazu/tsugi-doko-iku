@@ -4,9 +4,14 @@ import test from 'node:test';
 import { escapeHtml, mapsSearch, mapsTransit, nearbyPlaces, rankPlaces, stampKey } from '../public/core.js';
 import { collections, places, travelerTypes } from '../public/data.js';
 
-import { communityTabs, editorial, feedPosts, homeFeature, reactionTypes, samplePosts } from '../public/community-data.js';
+import { communityTabs, editorial, feedPosts, homeFeature, reactionTypes, samplePosts, searchPosts } from '../public/community-data.js';
 import { photos } from '../public/photo-data.js';
 import { canFeaturePhoto, photoFor } from '../public/photos.js';
+
+import { travelerRanking } from '../public/traveler-quiz.js';
+import { movePhoto } from '../public/gallery.js';
+import { jpegTechnicalExif } from '../public/gallery-media.js';
+import { loadToyamaPilot, searchToyama } from '../public/transit-pilot.js';
 
 test('search combines region, phrase and theme, retaining preferred themes first', () => {
   assert.deepEqual(rankPlaces(places,'自然',' 秋田 ').map(place=>place.id),['mototaki','hachibodai']);
@@ -103,4 +108,54 @@ test('real photos have attributable local assets and user photos require public 
   assert.equal(canFeaturePhoto({...example,visibility:'private'}),false);
   assert.equal(canFeaturePhoto({...example,moderation:'pending'}),false);
   assert.equal(canFeaturePhoto({...example,homeConsent:{status:'revoked',version:'v1'}}),false);
+});
+
+test('community text search and full-width hashtags apply exact tag matches', () => {
+  assert.deepEqual(searchPosts(samplePosts,'＃秋田').map(post=>post.id),['mototaki-light','nyuto-note','oga-booklet']);
+  assert.equal(searchPosts(samplePosts,'#秋').length,0);
+  assert.deepEqual(searchPosts(samplePosts,'#秋田 木漏れ日').map(post=>post.id),['mototaki-light']);
+});
+
+test('traveler scores support multiple sides and do not use saved themes by default', () => {
+  const answers = ['冒険家','ネイチャーラバー','アーティスト','登山家'];
+  assert.deepEqual(travelerRanking(answers).map(type=>type.score),[4,4,4,4]);
+  assert.equal(travelerRanking(answers,['文化・アート'])[0].name,'アーティスト');
+  assert.equal(travelerRanking(answers,['文化・アート'])[0].score,5);
+});
+
+test('photo reordering preserves entries and does not move past the album edges', () => {
+  const photos = [{id:'a',description:'山'},{id:'b',description:'海'},{id:'c'}];
+  assert.deepEqual(movePhoto(photos,'a',1).map(photo=>photo.id),['b','a','c']);
+  assert.equal(movePhoto(photos,'a',1)[1].description,'山');
+  assert.equal(movePhoto(photos,'a',-1),photos);
+  assert.equal(movePhoto(photos,'missing',1),photos);
+});
+
+test('JPEG EXIF reads allowed camera data and ignores a GPS directory tag', () => {
+  const tiff = Buffer.alloc(80);
+  tiff.write('II',0);tiff.writeUInt16LE(42,2);tiff.writeUInt32LE(8,4);tiff.writeUInt16LE(2,8);
+  tiff.writeUInt16LE(0x0110,10);tiff.writeUInt16LE(2,12);tiff.writeUInt32LE(7,14);tiff.writeUInt32LE(45,18);
+  tiff.writeUInt16LE(0x8825,22);tiff.writeUInt16LE(4,24);tiff.writeUInt32LE(1,26);tiff.writeUInt32LE(55,30);
+  tiff.write('CAMERA\0',45);tiff.write('PRIVATE-GPS',55);
+  const payload = Buffer.concat([Buffer.from('Exif\0\0'),tiff]);
+  const prefix = Buffer.from([0xff,0xd8,0xff,0xe1,0,payload.length+2]);
+  const image = Buffer.concat([prefix,payload,Buffer.from([0xff,0xd9])]);
+  assert.deepEqual(jpegTechnicalExif(image),{model:'CAMERA'});
+  assert.deepEqual(jpegTechnicalExif(image.subarray(0,50)),{});
+});
+
+test('real Toyama bus and walking candidates respect all three caps and the published service dates', async () => {
+  const data = await loadToyamaPilot();
+  const trip = {from:'1_01',to:'28_01',date:'2026-11-25',time:'10:00'};
+  const short = searchToyama(data,{...trip,limit:30});
+  assert.equal(short.length,2);
+  assert.ok(short.every(route=>route.type==='bus' && route.fare===200 && route.walk<=1800));
+  const middle = searchToyama(data,{...trip,limit:60});
+  assert.ok(middle.some(route=>route.type==='walk' && route.walk>1800 && route.walk<=3600));
+  const far = {...trip,to:'poi-zoo'};
+  assert.deepEqual(searchToyama(data,{...far,limit:60}),[]);
+  assert.ok(searchToyama(data,{...far,limit:120}).some(route=>route.walk>3600 && route.walk<=7200));
+  assert.deepEqual(searchToyama(data,{...trip,date:'2027-04-01',limit:120}),[]);
+  assert.deepEqual(searchToyama(data,{...trip,date:'2027-02-31',limit:120}),[]);
+  assert.deepEqual(searchToyama(data,{...trip,from:'unknown',limit:60}),[]);
 });

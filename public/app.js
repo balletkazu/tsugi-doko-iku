@@ -3,14 +3,21 @@ import { escapeHtml as e, mapsSearch, mapsTransit, nearbyPlaces, rankPlaces, rou
 import { read, update, clear } from './storage.js';
 import { icon, link, external, page, empty, placeCard, chips, options, saveButton } from './ui.js';
 import { recordScreen, recordGroup, renderPhotos, submitRecord, shareTrip, revokePhotos } from './records.js';
-import { communityDetail, communityHome, communitySaved, findSamplePost } from './community.js';
+import { communityDetail, communityHome, communitySaved, findSamplePost, homeUrl } from './community.js';
 import { editorial, reactionTypes } from './community-data.js';
 import { photoFigure, photoFor } from './photos.js';
+import { createGallery } from './gallery.js';
+import { openingPhotoPage, showFirstOpening, showOpening } from './opening.js';
+import { mailbox, medalPage, milestones, playRoomSound, roomMotion, roomScreen, roomSettings } from './room.js';
+import { questions, quizPage, travelerRanking } from './traveler-quiz.js';
+import { loadToyamaPilot, pilotPage } from './transit-pilot.js';
 
 const view = document.querySelector('#view');
 const nav = document.querySelector('#nav');
 const notice = document.querySelector('#notice');
 let lastScreen;
+let pilot, pilotLoading, pilotRequest;
+const gallery = createGallery(view,{go,notify:toast});
 const tabs = [['home','ホーム','home'],['discover','旅を発見','compass'],['route','行き方','route'],['my','私の旅','book']];
 const state = { profile:{}, data:{trips:[], journals:[]}, nearby:null, route:null };
 let toastTimer;
@@ -37,14 +44,18 @@ const back = (url, label) => `<p class="no-print">${link(url,label,'back','text-
 const placeLabel = place => `${place.name} ${place.region}`;
 
 function setNav(screen) {
-  const parent = {place:'discover',story:'home',nearby:'route',saved:'my',trip:'my',journal:'my',stamps:'my',about:'home'}[screen] ?? screen;
+  const parents = {place:'discover',story:'home','opening-photo':'home',nearby:'route',pilot:'route',saved:'my',trip:'my',journal:'my',stamps:'my',type:'my',medals:'my',mail:'my',photos:'my','room-settings':'my',about:'home'};
+  const parent = Object.hasOwn(parents,screen) ? parents[screen] : screen;
   nav.innerHTML = tabs.map(([id,label,glyph])=>`<a href="#${id}" class="nav-link" ${parent === id ? 'aria-current="page"' : ''}>${icon(glyph)}<span>${label}</span></a>`).join('');
 }
 
 function discover(params) {
   const theme = themes.includes(params.get('theme')) ? params.get('theme') : '';
   const query = (params.get('q') ?? '').slice(0,70);
-  const preferred = travelerTypes.find(item=>item.name === state.profile.traveler)?.themes ?? [];
+  const manual = travelerTypes.find(item=>item.name === state.profile.traveler);
+  const savedThemes = state.profile.quizSaved ? places.filter(place=>isSaved(place.id)).map(place=>place.theme) : [];
+  const ranking = state.profile.quiz ? travelerRanking(state.profile.quiz,savedThemes).slice(0,2) : [];
+  const preferred = manual?.themes ?? ranking.flatMap(type=>type.themes);
   const list = rankPlaces(places,theme,query,preferred);
   return page('旅を発見','水辺、島、山。気になる風景から次の旅を探す。',`<form id="discover-search" class="search" data-theme="${e(theme)}"><label>地名やキーワード<input name="q" type="search" maxlength="70" value="${e(query)}" placeholder="例：秋田、渓谷"></label><button class="button">検索する</button></form>${chips(['すべて',...themes],theme || 'すべて',label=>discoverUrl(label === 'すべて' ? '' : label,query))}<p class="muted">${list.length}件の旅先</p><div class="results">${list.length ? placeCards(list) : empty('該当する旅先がありません','別のキーワードやテーマをお試しください。')}</div>`,{eyebrow:'Discover'});
 }
@@ -73,7 +84,7 @@ function route(params) {
   const values = state.route ?? {};
   const to = params.has('to') ? params.get('to').slice(0,100) : values.to ?? '';
   const result = values.url && to === values.to ? `<section class="surface flow"><h2>入力した条件</h2><p><strong>${e(values.from)} → ${e(values.to)}</strong></p><p class="muted">希望：徒歩${values.walk}分まで・${e(values.priority)}を優先</p><div class="actions">${external(values.url,'Google マップで公共交通を調べる')}${link(findPlace(values.placeId) ? `#nearby?anchor=${values.placeId}` : '#nearby','寄り道候補を見る','pin','button button-outline')}</div><p class="muted">外部地図に渡すのは出発地と目的地です。選んだ徒歩上限と優先条件は、この画面で確認できます。</p></section>` : '';
-  return page('行き方','',`<div class="flow"><p class="notice"><strong>アプリ内の経路検索は準備中です。</strong> 徒歩上限と出発地・目的地を入力して、条件を確認できます。</p><form id="route-form" class="surface flow"><div class="field-grid"><label>出発地<input required name="from" maxlength="100" value="${e(values.from)}" placeholder="例：秋田駅"></label><label>目的地<input required name="to" maxlength="100" value="${e(to)}" placeholder="例：元滝伏流水"></label></div><button class="button button-outline" type="button" data-action="swap">出発地と目的地を入れ替える</button><fieldset><legend>合計の徒歩上限（希望）</legend>${options('walk',walkingLimits,values.walk ?? 60,value=>value===30?'30分':`${value/60}時間`)}</fieldset><fieldset><legend>優先したいこと</legend>${options('priority',routePriorities,values.priority ?? routePriorities[0])}</fieldset><div class="actions"><button class="button">入力した条件を確認${icon('arrow')}</button>${link('#nearby','寄り道を探す','pin','button button-outline')}</div><p id="route-error" class="error" role="status" hidden></p></form>${result}</div>`,{narrow:true,eyebrow:'Plan your way'});
+  return page('行き方','',`<div class="flow"><section class="surface flow"><h2>富山市の乗換案内</h2><p>実際のバス時刻表と徒歩データで、行き方を探せます。</p>${link('#pilot','富山市で検索する','route')}</section><p class="notice">その他の地域では入力した条件の確認と外部地図への案内を利用できます。</p><form id="route-form" class="surface flow"><div class="field-grid"><label>出発地<input required name="from" maxlength="100" value="${e(values.from)}" placeholder="例：秋田駅"></label><label>目的地<input required name="to" maxlength="100" value="${e(to)}" placeholder="例：元滝伏流水"></label></div><button class="button button-outline" type="button" data-action="swap">出発地と目的地を入れ替える</button><fieldset><legend>合計の徒歩上限（希望）</legend>${options('walk',walkingLimits,values.walk ?? 60,value=>value===30?'30分':`${value/60}時間`)}</fieldset><fieldset><legend>優先したいこと</legend>${options('priority',routePriorities,values.priority ?? routePriorities[0])}</fieldset><div class="actions"><button class="button">入力した条件を確認${icon('arrow')}</button>${link('#nearby','寄り道を探す','pin','button button-outline')}</div><p id="route-error" class="error" role="status" hidden></p></form>${result}</div>`,{narrow:true,eyebrow:'Plan your way'});
 }
 
 function nearby(params) {
@@ -85,9 +96,10 @@ function nearby(params) {
   return page('寄り道を探す','現在地か気になる旅先を基準に、立ち寄れそうな場所を探す。',`<form id="nearby-form" class="surface flow"><label>基準にする旅先<select name="anchor"><option value="">旅先を選ぶ</option>${places.map(place=>`<option value="${place.id}" ${anchorId===place.id?'selected':''}>${place.name}（${place.region}）</option>`).join('')}</select></label><div class="actions"><button class="button">周辺を探す</button><button class="button button-outline" type="button" data-action="location">${icon('pin')}現在地から探す</button></div><p class="muted">現在地は候補の計算にだけ使い、保存・送信しません。</p><p id="nearby-message" class="muted" role="status" hidden></p></form>${output}`,{narrow:true,eyebrow:'Take a detour'});
 }
 
-function myTravel() {
+function myTravel(params) {
   const { trips, journals } = state.data;
-  return page('私の旅','行きたい場所も、旅の思い出も。ここで自分のペースで育てる。',`<div class="flow"><section class="surface flow"><div class="section-title"><div><h2>旅の栞</h2><p class="section-intro">旅程や地図を一つにまとめる。</p></div>${link('#trip/new','栞を作る','arrow')}</div>${recordList(trips,'trip','まだ栞がありません。')}</section><section class="surface flow"><div class="section-title"><div><h2>旅の日記</h2><p class="section-intro">その日の写真と気持ちを、自分だけの記録に。</p></div>${link('#journal/new','日記を書く','edit')}</div>${recordList(journals,'journal','まだ日記がありません。')}</section><section class="surface flow"><h2>旅のスタンプ帳</h2><p class="muted">訪ねた都道府県や名所のスタンプを集める。</p>${link('#stamps','スタンプ帳を開く','stamp','button button-outline')}</section><section class="surface flow"><h2>旅人タイプ</h2><p class="muted">好きな旅を選ぶと、発見で近いテーマを先に表示します。</p><form id="traveler-form" class="flow"><label>好みのタイプ<select name="type"><option value="">おまかせ</option>${travelerTypes.map(item=>`<option value="${item.name}" ${state.profile.traveler===item.name?'selected':''}>${item.name} — ${item.description}</option>`).join('')}</select></label><button class="button button-outline">好みを保存する</button></form></section><div class="actions">${link('#saved','保存した旅先と投稿','heart','button button-outline')}${link('#about','データと公開範囲について','arrow','text-link')}</div></div>`,{narrow:true,eyebrow:'My journeys'});
+  const list = `<div class="flow"><section class="surface flow"><div class="section-title"><div><h2>旅の栞</h2><p class="section-intro">旅程や地図を一つにまとめる。</p></div>${link('#trip/new','栞を作る','arrow')}</div>${recordList(trips,'trip','まだ栞がありません。')}</section><section class="surface flow"><div class="section-title"><div><h2>旅の日記</h2><p class="section-intro">その日の写真と気持ちを、自分だけの記録に。</p></div>${link('#journal/new','日記を書く','edit')}</div>${recordList(journals,'journal','まだ日記がありません。')}</section><section class="surface flow"><h2>旅のスタンプ帳</h2><p class="muted">訪ねた都道府県や名所のスタンプを集める。</p>${link('#stamps','スタンプ帳を開く','stamp','button button-outline')}</section><section class="surface flow"><h2>旅人タイプ</h2><p class="muted">好きな旅を選ぶと、発見で近いテーマを先に表示します。</p><form id="traveler-form" class="flow"><label>好みのタイプ<select name="type"><option value="">おまかせ</option>${travelerTypes.map(item=>`<option value="${item.name}" ${state.profile.traveler===item.name?'selected':''}>${item.name} — ${item.description}</option>`).join('')}</select></label><button class="button button-outline">好みを保存する</button></form></section><div class="actions">${link('#saved','保存した旅先と投稿','heart','button button-outline')}${link('#type','旅人タイプの診断を開く','arrow','text-link')}${link('#about','データと公開範囲について','arrow','text-link')}</div></div>`;
+  return roomScreen(state.profile,params.get('view'),list);
 }
 
 function recordList(items,type,placeholder) {
@@ -113,14 +125,26 @@ function missing() {
 function render({ navigate = false } = {}) {
   const {screen,id,edit,params} = currentLocation();
   revokePhotos();
+  gallery.release();
+  document.documentElement.classList.toggle('motion-off',state.profile.effects?.motion === false);
+  const turningStamps = screen === 'stamps' && lastScreen === 'stamps';
   const screens = {
     home:()=>communityHome(params,state.profile), discover:()=>discover(params), place:()=>placeDetail(id), story:()=>storyDetail(id,params), route:()=>route(params), nearby:()=>nearby(params),
-    my:myTravel, trip:()=>recordScreen('trip',id,edit,state.data), journal:()=>recordScreen('journal',id,edit,state.data), stamps:()=>stamps(id), about,
-    saved:()=>savedPage(params)
+    my:()=>myTravel(params), trip:()=>recordScreen('trip',id,edit,state.data), journal:()=>recordScreen('journal',id,edit,state.data), stamps:()=>stamps(id), about,
+    saved:()=>savedPage(params), 'opening-photo':openingPhotoPage,
+    photos:()=>gallery.screen(id,edit), type:()=>quizPage(state.profile,places),
+    medals:()=>medalPage(state.profile,state.data), mail:()=>mailbox(state.profile,state.data),
+    'room-settings':()=>roomSettings(state.profile), pilot:()=>pilotPage(pilot,pilotRequest)
   };
+  if (screen === 'pilot' && !pilotLoading) {
+    pilotLoading = loadToyamaPilot().then(data=>{pilot=data;}).catch(()=>{pilot=false;}).then(()=>{
+      if (currentLocation().screen === 'pilot') render();
+    });
+  }
   setNav(screen);
   view.innerHTML = (Object.hasOwn(screens,screen) ? screens[screen] : missing)();
   renderPhotos(view,state.data);
+  if (navigate && turningStamps) roomMotion(state.profile,view.querySelector('.stamp-grid'),'page');
   const title = view.querySelector('h1');
   const switchingFeed = screen === 'home' && lastScreen === 'home';
   lastScreen = screen;
@@ -207,7 +231,35 @@ view.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
   if (!button) return;
   const {action,id,value,type} = button.dataset;
-  if (action === 'swap') {
+  if (action === 'replay-opening') {
+    showOpening(()=>go('#opening-photo'));
+  } else if (action === 'room-layout' && ['room','list'].includes(value)) {
+    write(async()=>{
+      state.profile = await update('profile',(profile = {})=>({...profile,roomLayout:value}));
+      if (currentLocation().screen !== 'my') return;
+      if (currentLocation().params.has('view')) history.replaceState(null,'','#my');
+      refreshControl(button);
+    },button);
+  } else if (action === 'reset-quiz') {
+    write(async()=>{
+      state.profile = await update('profile',(profile = {})=>{
+        const {quiz,quizSaved,...next} = profile;
+        return next;
+      });
+      refreshControl(button);
+      toast('診断の回答と許可を消去しました。');
+    },button);
+  } else if (action === 'claim-medal') {
+    const medal = milestones.find(item=>item.id===id);
+    if (!medal?.isEarned(state.profile,state.data) || (state.profile.medals ?? []).includes(id)) return;
+    playRoomSound(state.profile,'medal');
+    write(async()=>{
+      state.profile = await update('profile',(profile = {})=>medal.isEarned(profile,state.data) ? {...profile,medals:[...new Set([...(profile.medals ?? []),id])]} : profile);
+      refreshControl(button);
+      roomMotion(state.profile,view.querySelector('[data-medal="'+id+'"] .medal-icon'),'medal');
+      toast('メダルを受け取りました。');
+    },button);
+  } else if (action === 'swap') {
     const {from,to} = button.form.elements;
     [from.value,to.value] = [to.value,from.value];
   } else if (action === 'location') {
@@ -259,6 +311,7 @@ view.addEventListener('click', event => {
       toast('この端末の反応を更新しました。');
     },button);
   } else if (action === 'stamp') {
+    if (!state.profile.stamps?.[id]) playRoomSound(state.profile,'stamp');
     write(async()=>{
       state.profile = await update('profile',(profile = {})=>{
         const stamps = {...profile.stamps};
@@ -266,6 +319,7 @@ view.addEventListener('click', event => {
         return {...profile,stamps};
       });
       refreshControl(button);
+      if (state.profile.stamps[id]) roomMotion(state.profile,[...view.querySelectorAll('.stamp')].find(stamp=>stamp.dataset.id===id),'stamp');
       toast(state.profile.stamps[id] ? 'スタンプを押しました。' : 'スタンプを取り消しました。');
     },button);
   } else if (action === 'delete-record' && confirm('この記録を削除しますか？')) {
@@ -282,6 +336,8 @@ view.addEventListener('click', event => {
       state.data = {trips:[],journals:[]};
       state.route = null;
       state.nearby = null;
+      pilotRequest = undefined;
+      gallery.reset();
       go('#home');
       toast('この端末のアプリ記録を消去しました。');
     },button);
@@ -292,7 +348,29 @@ view.addEventListener('submit', event => {
   event.preventDefault();
   const form = event.target;
   const fields = new FormData(form);
-  if (form.id === 'discover-search') {
+  if (form.id === 'community-search') {
+    go(homeUrl(form.dataset.feed,fields.get('q').trim()));
+  } else if (form.id === 'pilot-form' && pilot) {
+    pilotRequest = {from:fields.get('from'),to:fields.get('to'),date:fields.get('date'),time:fields.get('time'),limit:Number(fields.get('limit'))};
+    render();
+    document.querySelector('#pilot-results')?.focus();
+  } else if (form.id === 'effects-form') {
+    write(async()=>{
+      state.profile = await update('profile',(profile = {})=>({...profile,effects:{motion:fields.has('motion'),sound:fields.has('sound')}}));
+      render();
+      toast('部屋の設定を保存しました。');
+    },event.submitter);
+  } else if (form.id === 'quiz-form') {
+    const answers = questions.map((_,index)=>fields.get('q'+index));
+    if (!answers.every((answer,index)=>questions[index][1].some(([name])=>name===answer))) return;
+    write(async()=>{
+      state.profile = await update('profile',(profile = {})=>({...profile,quiz:answers,quizSaved:fields.has('saved')}));
+      render();
+      const result = view.querySelector('.quiz-results');
+      if (result) { result.tabIndex=-1; result.focus(); }
+      toast('旅人タイプの診断を保存しました。');
+    },event.submitter);
+  } else if (form.id === 'discover-search') {
     go(discoverUrl(form.dataset.theme,fields.get('q').trim()));
   } else if (form.id === 'route-form') {
     const from = fields.get('from').trim();
@@ -345,8 +423,9 @@ document.querySelector('.skip').addEventListener('click',event=>{
 document.querySelector('#saved-icon').innerHTML = icon('heart');
 window.addEventListener('hashchange',()=>render({navigate:true}));
 view.innerHTML = '<p class="loading" role="status">旅のページを開いています。</p>';
+showFirstOpening(()=>go('#opening-photo'));
 try {
-  const [profile,data] = await Promise.all([read('profile'),read('records')]);
+  const [profile,data] = await Promise.all([read('profile'),read('records'),gallery.load()]);
   state.profile = profile ?? {};
   state.data = data ?? state.data;
 } catch {

@@ -1083,39 +1083,6 @@ fieldset>legend {
   padding: 0 0 9px;
 }
 
-.community-feature {
-  margin-top: 27px;
-}
-
-.community-feature-image {
-  border-radius: 22px;
-  height: clamp(300px, 36vw, 457px);
-  overflow: hidden;
-  background: var(--sage);
-}
-
-.community-feature-image picture,
-.community-feature-image img {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.community-feature-image img {
-  object-position: 50% 53%;
-}
-
-.community-feature figcaption .photo-credit {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  column-gap: 12px;
-}
-
-.community-feature figcaption .credit-location {
-  font-size: 12px;
-}
-
 .community {
   margin-top: 32px;
 }
@@ -1324,15 +1291,6 @@ fieldset>legend {
 }
 
 @media (max-width: 680px) {
-  .community-feature {
-    margin-top: 13px;
-  }
-
-  .community-feature-image {
-    border-radius: 17px;
-    height: clamp(220px, 64vw, 320px);
-  }
-
   .community {
     margin-top: 23px;
   }

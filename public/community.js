@@ -1,11 +1,16 @@
 import { escapeHtml as e } from './core.js';
-import { communityTabs, editorial, feedPosts, homeFeature, reactionTypes, samplePosts } from './community-data.js';
-import { canFeaturePhoto, photoCredit, photoFigure, photoFor, renderPhoto } from './photos.js';
+import { communityTabs, editorial, feedPosts, reactionTypes, samplePosts, searchPosts } from './community-data.js';
+import { photoCredit, photoFigure, photoFor, renderPhoto } from './photos.js';
 import { empty, icon, link } from './ui.js';
 
 const labels = Object.fromEntries(communityTabs);
 export const findSamplePost = id => samplePosts.find(post => post.id === id);
-export const homeUrl = (feed = 'all') => feed === 'all' ? '#home' : `#home?${new URLSearchParams({feed})}`;
+export function homeUrl(feed = 'all', query = '') {
+  const params = new URLSearchParams();
+  if (feed !== 'all') params.set('feed',feed);
+  if (query) params.set('q',query);
+  return params.size ? `#home?${params}` : '#home';
+}
 
 const savePostButton = (post, profile) => {
   const saved = (profile.savedPosts ?? []).includes(post.id);
@@ -19,7 +24,7 @@ function followButton(profile) {
 }
 
 function tags(post) {
-  return `<ul class="post-tags" aria-label="タグ">${post.tags.map(tag=>`<li>#${e(tag)}</li>`).join('')}</ul>`;
+  return `<ul class="post-tags" aria-label="タグ">${post.tags.map(tag=>`<li><a href="${e(homeUrl('all',`#${tag}`))}">#${e(tag)}</a></li>`).join('')}</ul>`;
 }
 
 function card(post, profile, returnTo) {
@@ -47,23 +52,28 @@ export const communityCards = (posts, profile, returnTo) => `<div class="post-gr
 
 export function communityHome(params, profile) {
   const tab = Object.hasOwn(labels, params.get('feed')) ? params.get('feed') : 'all';
-  const feature = photoFor(homeFeature);
-  const posts = feedPosts(samplePosts, tab, profile);
-  const results = posts.length ? communityCards(posts,profile,tab) : `<div class="surface flow following-empty">
-    <h2>フォロー中のサンプルはありません</h2>
-    <p>この端末で編集部をフォローすると、ここにサンプル投稿が表示されます。旅人どうしのフォローは準備中です。</p>
-    ${followButton(profile)}
-  </div>`;
-  return `${canFeaturePhoto(feature) ? `<div class="community-feature">${photoFigure(feature,'community-feature-image',{priority:true})}</div>` : ''}
-    <section class="home-section community" aria-labelledby="community-title">
-      <div class="section-title"><h1 id="community-title">旅人のひとこま</h1></div>
-      <nav class="feed-nav" aria-label="旅の投稿の種類">
-        ${communityTabs.map(([id,label])=>`<a href="${e(homeUrl(id))}" class="feed-tab" ${id === tab ? 'aria-current="page"' : ''}>${label}</a>`).join('')}
-      </nav>
-      <p class="feed-note">掲載している投稿は、編集部が作成したサンプルです。</p>
-      ${results}
-    </section>
-    <div class="home-tools">${link('#discover','旅先を探す','compass','text-link')}${link('#nearby','寄り道を探す','pin','text-link')}${link('#stamps','旅のスタンプ帳','stamp','text-link')}</div>`;
+  const query = (params.get('q') ?? '').slice(0,80);
+  const results = searchPosts(feedPosts(samplePosts,tab,profile),query);
+  const cards = results.length ? communityCards(results,profile,tab) :
+    tab === 'following' && !(profile.sampleFollows ?? []).includes(editorial.id) ? `<div class="surface flow following-empty">
+      <h2>フォロー中のサンプルはありません</h2>
+      <p>編集部のサンプルをフォローすると、ここに表示されます。</p>${followButton(profile)}
+    </div>` : empty('見つかりませんでした','キーワードや #タグを変えてお試しください。');
+  return `<section class="home-section community" aria-labelledby="community-title">
+    <div class="section-title community-title"><h1 id="community-title">旅人のひとこま</h1>
+      ${link('#photos/new','投稿を書く','edit')}</div>
+    <form id="community-search" class="search" data-feed="${tab}">
+      <label><span class="visually-hidden">投稿やハッシュタグを検索</span><input type="search" name="q" value="${e(query)}" maxlength="80" placeholder="投稿・ #タグ を探す"></label>
+      <button class="button button-outline">検索</button>
+    </form>
+    <nav class="feed-nav" aria-label="旅の投稿の種類">
+      ${communityTabs.map(([id,label])=>`<a href="${e(homeUrl(id,query))}" class="feed-tab" ${id === tab ? 'aria-current="page"' : ''}>${label}</a>`).join('')}
+    </nav>
+    <div class="feed-meta"><p class="feed-note">編集部のサンプル投稿${query ? ` · ${results.length}件` : ''}</p>
+      ${query ? link(homeUrl(tab),'検索をクリア',null,'text-link') : link('#opening-photo','ここは、どこ？',null,'text-link')}
+    </div>
+    ${cards}
+  </section><div class="home-tools">${link('#photos','投稿の下書き','edit','text-link')}${link('#discover','旅先を探す','compass','text-link')}${link('#nearby','寄り道を探す','pin','text-link')}${link('#stamps','旅のスタンプ帳','stamp','text-link')}</div>`;
 }
 
 export function communityDetail(post, from, profile) {
@@ -83,6 +93,7 @@ export function communityDetail(post, from, profile) {
         ${post.stops?.length ? `<h2>旅程の例</h2><ol>${post.stops.map(stop=>`<li>${e(stop)}</li>`).join('')}</ol>` : ''}
       </article>
       <div class="actions">
+        ${photo ? `<button type="button" class="button button-outline" data-album="sample" data-picture-id="${post.photoId}">写真を全画面で見る</button>` : ''}
         ${post.placeId ? link(`#place/${post.placeId}`,'旅先の案内を見る','arrow','button button-outline') : ''}
         ${savePostButton(post,profile)}
       </div>
