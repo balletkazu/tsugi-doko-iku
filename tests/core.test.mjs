@@ -309,3 +309,50 @@ test('nearby transit evidence rejects weak positions and reports overlapping bus
   assert.deepEqual(nearbyTransport(samples.map(x=>({...x,accuracy:85})),{train:[[a,b]],bus:[]}),[]);
   const network=await toyamaMobility();assert.ok(network.train.length&&network.bus.length);
 });
+
+test('room migration keeps old furnishings and photos; rotated footprints keep entrances open',async()=>{
+  const {readHome,canPlace,homePath,validateHome,homeStock}=await import('../public/home-layout.js');
+  const game={slots:['plant','cup','books'],wallPhoto:'ref-1',entries:[{id:'ref-1',activity:'cafe',photo:true}]};
+  const layout=readHome(game);
+  assert.equal(layout.wallPhoto,'ref-1');assert.ok(layout.items.room.some(item=>item.kind==='cup'));
+  assert.equal(validateHome(game,layout),layout);
+  const candidate={id:'test',kind:'shelf',x:8,y:2,r:0};
+  assert.equal(canPlace('room',[],candidate),false);
+  assert.equal(canPlace('room',[],{...candidate,r:1}),true);
+  assert.equal(canPlace('room',[],{...candidate,x:3,y:6}),false);
+  assert.equal(canPlace('room',[],{...candidate,kind:'pond',x:2}),false);
+  assert.ok(homeStock(game).includes('pond'));
+  const path=homePath('room',layout.items.room,[4,6],[[7,5]]);
+  assert.ok(path.length>2);
+  assert.deepEqual(path.at(-1),[7,5]);
+});
+test('avatar palettes and customization keep truthful stable counts',async()=>{
+  const {avatarFrom,parts}=await import('../public/world-data.js');
+  const {hairPalette,skinPalette}=await import('../public/avatar-palette.js');
+  const {facings}=await import('../public/traveler-art.js');
+  assert.equal(parts.hair.length-1,16);assert.equal(parts.outfit.length-1,8);
+  assert.equal(new Set(hairPalette.map(([,color])=>color)).size,49);
+  assert.equal(skinPalette.length,20);assert.equal(facings.length,8);
+  const a=avatarFrom({design:2,hairTint:'#63848e',tune:{eyes:{size:99,gap:-77},mouth:{x:5}}});
+  assert.deepEqual([a.hairTint,a.tune.eyes.size,a.tune.eyes.gap,a.tune.mouth.x],['#63848e',10,-10,5]);
+  assert.equal(avatarFrom({hairTint:'javascript:alert(0)'}).hairTint,null);
+});
+test('regional keepsakes match precise user-entered activities rather than an adjacent prefecture',async()=>{
+  const {activityEvents,regionalItems,keepsakesFor}=await import('../public/regional-data.js');
+  assert.equal(Object.keys(regionalItems).length,8);
+  assert.ok(Object.values(regionalItems).every(item=>item.source.startsWith('https://')));
+  assert.equal(Object.keys(activityEvents).length,10);
+  assert.deepEqual(keepsakesFor({pref:'JP-16',place:'氷見 市',activity:'meal'}),['himi-buri']);
+  assert.deepEqual(keepsakesFor({pref:'JP-16',place:'立山・室堂',activity:'hike'}),['tateyama-bird']);
+  assert.deepEqual(keepsakesFor({pref:'JP-18',place:'立山',activity:'hike'}),[]);
+  assert.deepEqual(keepsakesFor({pref:'JP-16',place:'氷見',activity:'walk'}),[]);
+});
+test('32 illustrated fortune prompts rank the same four types with response consent applied separately',async()=>{
+  const {allQuestions}=await import('../public/fortune.js');
+  assert.equal(allQuestions.length,32);
+  assert.equal(new Set(allQuestions.map(([question])=>question)).size,32);
+  for(const [,choices] of allQuestions)assert.equal(new Set(choices.map(([type])=>type)).size,4);
+  const answers=allQuestions.map(([,choices])=>choices.find(([type])=>type==='ネイチャーラバー')[0]);
+  assert.equal(travelerRanking(answers,[],allQuestions)[0].score,128);
+  assert.equal(travelerRanking(answers,['アート','自然'],allQuestions)[0].score,129);
+});

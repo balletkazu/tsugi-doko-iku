@@ -9,7 +9,8 @@ import { photoFigure, photoFor } from './photos.js';
 import { createGallery } from './gallery.js';
 import { openingPhotoPage, showFirstOpening, showOpening } from './opening.js';
 import { mailbox, medalPage, milestones, playRoomSound, roomMotion, roomScreen, roomSettings } from './room.js';
-import { questions, quizPage, travelerRanking } from './traveler-quiz.js';
+import { travelerRanking } from './traveler-quiz.js';
+import { allQuestions, fortunePage, mountFortune } from './fortune.js';
 import { loadToyamaPilot, pilotPage } from './transit-pilot.js';
 
 import {stampScreen,mountStampArt,findStamp,personalBook,recordVisit,gpsMatches} from './stamp-book.js';
@@ -25,7 +26,7 @@ let pilot, pilotLoading, pilotRequest;
 const gallery = createGallery(view,{go,notify:toast});
 const world = createWorld(view,{go,notify:toast,profile:()=>state.profile,onRecords:records=>{state.data=records;}});
 let closeRouteMaps=()=>{};
-const worldPages = new Set(['village','welcome','avatar','cottage','decorate','atlas','trail','activity','memories','menu','shop','companions']);
+const worldPages = new Set(['village','welcome','avatar','cottage','decorate','atlas','trail','activity','memories','menu','shop','companions','cabinet']);
 const tabs = [['village','街','home'],['atlas','地図','compass'],['cottage','自分の家','book'],['menu','メニュー','route']];
 const state = { profile:{}, data:{trips:[], journals:[]}, nearby:null, route:null };
 let toastTimer;
@@ -62,7 +63,7 @@ function discover(params) {
   const query = (params.get('q') ?? '').slice(0,70);
   const manual = travelerTypes.find(item=>item.name === state.profile.traveler);
   const savedThemes = state.profile.quizSaved ? places.filter(place=>isSaved(place.id)).map(place=>place.theme) : [];
-  const ranking = state.profile.quiz ? travelerRanking(state.profile.quiz,[...savedThemes,...(state.profile.quizActivity?world.themes():[])]).slice(0,2) : [];
+  const ranking = state.profile.quiz ? travelerRanking(state.profile.quiz,[...savedThemes,...(state.profile.quizActivity?world.themes():[])],allQuestions).slice(0,2) : [];
   const preferred = manual?.themes ?? ranking.flatMap(type=>type.themes);
   const list = rankPlaces(places,theme,query,preferred);
   return page('旅を発見','水辺、島、山。気になる風景から次の旅を探す。',`<form id="discover-search" class="search" data-theme="${e(theme)}"><label>地名やキーワード<input name="q" type="search" maxlength="70" value="${e(query)}" placeholder="例：秋田、渓谷"></label><button class="button">検索する</button></form>${chips(['すべて',...themes],theme || 'すべて',label=>discoverUrl(label === 'すべて' ? '' : label,query))}<p class="muted">${list.length}件の旅先</p><div class="results">${list.length ? placeCards(list) : empty('該当する旅先がありません','別のキーワードやテーマをお試しください。')}</div>`,{eyebrow:'Discover'});
@@ -135,7 +136,7 @@ function render({ navigate = false } = {}) {
     home:()=>communityHome(params,state.profile,world.snapshot()), discover:()=>discover(params), place:()=>placeDetail(id), story:()=>storyDetail(id,params), route:()=>route(params), nearby:()=>nearby(params),
     my:()=>myTravel(params), trip:()=>recordScreen('trip',id,edit,state.data), journal:()=>recordScreen('journal',id,edit,state.data), stamps:()=>stampScreen(id,params,state.profile,world.snapshot()), about,
     saved:()=>savedPage(params), 'opening-photo':openingPhotoPage,
-    photos:()=>gallery.screen(id,edit), type:()=>quizPage(state.profile,places,state.profile.quizActivity?world.themes():[]),
+    photos:()=>gallery.screen(id,edit), type:fortunePage,
     medals:()=>medalPage(state.profile,state.data), mail:()=>mailbox(state.profile,state.data),
     'room-settings':()=>roomSettings(state.profile), pilot:()=>pilotPage(pilot,pilotRequest)
   };
@@ -144,10 +145,13 @@ function render({ navigate = false } = {}) {
       if (currentLocation().screen === 'pilot') render();
     });
   }
-  document.body.classList.toggle('game-view',['village','cottage','avatar'].includes(screen));
+  document.body.classList.toggle('game-view',['village','cottage','avatar','decorate','type','cabinet'].includes(screen));
   setNav(screen);
   view.innerHTML = worldPages.has(screen) ? world.screen(screen,id,params) : (Object.hasOwn(screens,screen) ? screens[screen] : missing)();
   if(worldPages.has(screen)) world.hydrate(screen,params);
+  if(screen==='type')mountFortune(view,{profile:state.profile,activityThemes:world.themes(),save:async(quiz,quizSaved,quizActivity)=>{
+    state.profile=await update('profile',(p={})=>({...p,quiz,quizSaved,quizActivity}));
+  }});
   if(screen==='stamps')mountStampArt(view,state.profile);
   if(screen==='pilot') closeRouteMaps=mountRouteMaps(view,pilot);
   renderPhotos(view,state.data);
@@ -299,15 +303,6 @@ view.addEventListener('click', event => {
       if (currentLocation().params.has('view')) history.replaceState(null,'','#my');
       refreshControl(button);
     },button);
-  } else if (action === 'reset-quiz') {
-    write(async()=>{
-      state.profile = await update('profile',(profile = {})=>{
-        const {quiz,quizSaved,quizActivity,...next} = profile;
-        return next;
-      });
-      refreshControl(button);
-      toast('診断の回答と許可を消去しました。');
-    },button);
   } else if (action === 'claim-medal') {
     const medal = milestones.find(item=>item.id===id);
     if (!medal?.isEarned(state.profile,state.data) || (state.profile.medals ?? []).includes(id)) return;
@@ -420,16 +415,6 @@ view.addEventListener('submit', event => {
       state.profile = await update('profile',(profile = {})=>({...profile,effects:{motion:fields.has('motion'),sound:fields.has('sound')}}));
       render();
       toast('部屋の設定を保存しました。');
-    },event.submitter);
-  } else if (form.id === 'quiz-form') {
-    const answers = questions.map((_,index)=>fields.get('q'+index));
-    if (!answers.every((answer,index)=>questions[index][1].some(([name])=>name===answer))) return;
-    write(async()=>{
-      state.profile = await update('profile',(profile = {})=>({...profile,quiz:answers,quizSaved:fields.has('saved'),quizActivity:fields.has('activity')}));
-      render();
-      const result = view.querySelector('.quiz-results');
-      if (result) { result.tabIndex=-1; result.focus(); }
-      toast('旅人タイプの診断を保存しました。');
     },event.submitter);
   } else if (form.id === 'discover-search') {
     go(discoverUrl(form.dataset.theme,fields.get('q').trim()));

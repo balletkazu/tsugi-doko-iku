@@ -1,4 +1,5 @@
 // Prefectural capital coordinates are approximate anchors for the illustrated atlas.
+import {hairPalette,skinPalette,clothPalette,tuningParts,tuningFields} from './avatar-palette.js';
 import { collections } from './data.js';
 
 const capitals = [
@@ -20,16 +21,18 @@ export const parts = {
   nose:['鼻','ちいさな鼻','まるい鼻','すっとした鼻'],
   mouth:['口','ほほえみ','にっこり','まあるい口','きゅっと'],
   ears:['耳','ふつう','小さめ','大きめ'], beard:['髭','なし','口髭','あご髭','うっすら'],
-  hair:['髪型','ショート','ボブ','結び髪','ゆるいカール','前髪分け','おだんご','刈り上げ'],
-  hairColor:['髪色','栗','墨','亜麻','赤茶','灰','胡桃','青緑'],
-  skin:['肌色','杏','小麦','褐色','深い褐色','薄桃','蜂蜜'],
-  outfit:['洋服','旅の上着','シャツ','パーカ','ワンピース','オーバーオール'],
-  clothColor:['服の色','森','朱','藍','山吹','生成り','すみれ'],
-  pattern:['服の柄','無地','しま','水玉','格子'],
+  hair:['髪型','風に遊ぶショート','丸いボブ','二つ編み','くるくるカール','斜め分け','高いおだんご','短い刈り上げ','ウルフカット','肩までのボブ','リボンの低い結び髪','片側の三つ編み','真ん中分け','ゆれるロング','はねるピクシー','二つのおだんご','丸い短いカール'],
+  hairColor:['髪色',...hairPalette.map(([name])=>name)],
+  skin:['肌色',...skinPalette.map(([name])=>name)],
+  outfit:['洋服','旅の上着','山吹の作業着','雨のポンチョ','夏のワンピース','オーバーオール','藍の旅着','ニットのセーター','冬のダッフル'],
+  clothColor:['服の色',...clothPalette.map(([name])=>name)],
+  pattern:['服の柄','元の柄','しま','水玉','格子'],
+  material:['生地','そのまま','ざらりとした麻','起毛ウール','なめらかな綿'],
+  layer:['重ね着','なし','格子のベスト','生成りの肩掛け'],
   body:['体型','ふつう','ほっそり','ふっくら'], height:['身長','ふつう','小柄','高め'],
   hat:['帽子','なし','山歩き帽','ニット帽','キャップ','ベレー'],
   shoes:['靴','革のブーツ','帆布靴','赤い靴','長靴'],
-  glasses:['眼鏡','なし','丸眼鏡','角眼鏡','金縁'],
+  glasses:['眼鏡','なし','丸眼鏡','角眼鏡','金縁のハーフリム','青緑の楕円眼鏡'],
   bag:['リュック','なし','革のリュック','布のリュック'],
   accessory:['小物','なし','カメラ','スカーフ','花飾り','イヤリング']
 };
@@ -38,15 +41,18 @@ export const activities = {
   walk:['徒歩','walk','leaf'], cycle:['自転車','run','wheel'],train:['電車','look','ticket'],bus:['バス','sit','ticket'],boat:['船','look','shell'],plane:['飛行機','sit','wing'],
   hike:['登山','climb','leaf'],peak:['山頂','joy','stone'],spa:['温泉','sit','bowl'],hotel:['宿泊','sleep','lamp'],hut:['山小屋','read','lamp'],
   meal:['ご当地の食事','eat','bowl'],cafe:['カフェ','drink','cup'],beach:['海辺','look','shell'],resort:['休養','sit','shell'],
-  tour:['観光','look','frame'],play:['レジャー','joy','wheel'],photo:['風景の撮影','photo','frame'],rain:['雨の散歩','walk','drop'],snow:['雪の散歩','walk','snow']
+  art:['アート鑑賞','read','frame'],tour:['観光','look','frame'],play:['レジャー','joy','wheel'],photo:['風景の撮影','photo','frame'],rain:['雨の散歩','walk','drop'],snow:['雪の散歩','walk','snow']
 };
 export const items = {plant:'窓辺の鉢植え',books:'積み重ねた本',leaf:'押し葉の標本',shell:'貝殻の標本',wheel:'車輪の置物',ticket:'乗車券の額',wing:'翼の模型',stone:'山石の標本',bowl:'旅の小鉢',lamp:'山小屋のランプ',cup:'陶器のカップ',frame:'小さな写真額',drop:'雨粒の風鈴',snow:'雪の結晶飾り',fern:'シダの鉢',teaset:'藍染めの茶器',lantern:'星あかりの灯籠',brooch:'朝露のブローチ',rug:'夕焼けの織物'};
 export const starterSlots = ['plant',null,'books'];
-export const avatarDefaults = {design:2,name:'旅人',...Object.fromEntries(Object.keys(parts).map(key=>[key,0])),bag:1,hat:1};
+export const avatarDefaults = {design:2,name:'旅人',...Object.fromEntries(Object.keys(parts).map(key=>[key,0])),bag:1,hat:0};
 export function avatarFrom(input = {}) {
   // The first release encoded coat colors in the outfit field.
   if (input.design !== 2 && input.outfit !== undefined) input = {...input, clothColor:input.outfit, outfit:0};
-  return Object.fromEntries([['design',2],['name',String(input.name??'').trim().slice(0,24)||'旅人'],
+  const bounded=n=>Number.isFinite(n)?Math.max(-10,Math.min(10,Math.round(n))):0;
+  const tune=Object.fromEntries(tuningParts.map(part=>[part,Object.fromEntries(Object.keys(tuningFields).map(key=>[key,bounded(input.tune?.[part]?.[key])]))]));
+  const hairTint=typeof input.hairTint==='string'&&/^#[a-f0-9]{6}$/i.test(input.hairTint)?input.hairTint:null;
+  return Object.fromEntries([['design',2],['tune',tune],['hairTint',hairTint],['name',String(input.name??'').trim().slice(0,24)||'旅人'],
     ...Object.entries(parts).map(([key,choices])=>[key,Number.isInteger(input[key]) && input[key]>=0 && input[key]<choices.length-1 ? input[key] : avatarDefaults[key]])]);
 }
 export function inventory(game) {

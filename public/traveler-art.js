@@ -1,179 +1,194 @@
-import {avatarFrom} from './world-data.js';
+import {avatarFrom,avatarDefaults} from './world-data.js';
+import {hairPalette,skinPalette,clothPalette} from './avatar-palette.js';
 
-const ink='#584638', wood='#957458';
-const skin=['#f1c38c','#d3a478','#ad7959','#825843','#f5cfaa','#dfaf77'];
-const blush=['#d99777','#bf775a','#965d49','#a66655','#dc9f8e','#c78560'];
-const hair=['#895e44','#3d4038','#bf925a','#a05941','#94918a','#654b3c','#558478'];
-const clothes=['#819664','#bc7355','#567e8e','#d3a459','#ccbc98','#9a8296'];
-const trousers=['#5d7271','#6f654f','#587785','#77664e','#9c7956'];
-const shoes=['#7c5a3d','#c5a37c','#9c513e','#6e7f5e'];
-
-function illustrator(canvas) {
-  const c=canvas.getContext('2d');
-  c.setTransform(canvas.width/96,0,0,canvas.height/96,0,0);
-  c.clearRect(0,0,96,96);
-  c.lineCap='round';c.lineJoin='round';
-  function paint(color,border,width=1.55) {
-    if(color){c.fillStyle=color;c.fill();}
-    if(border){c.lineWidth=width;c.strokeStyle=border;c.stroke();}
+const atlasNames=['directions','actions','heads','heads-profile','heads-back','garments','details'];
+const atlases={};
+const variants=new Map();
+const normalized=new WeakMap();
+const pixels=128;
+let assetsPromise;
+const directions={
+  south:[0,2,3,false],north:[11,12,13,false],
+  east:[8,9,10,false],west:[8,9,10,true],
+  southeast:[4,5,6,false],southwest:[4,5,6,true],
+  northeast:[7,14,15,false],northwest:[7,14,15,true]
+};
+export const facings=Object.keys(directions);
+const actions={run:[0,1],climb:[2,3],sleep:[4,5],eat:[6,7],sit:[8],drink:[8,9],photo:[10,11],joy:[12,13],read:[14],surprise:[15]};
+const outfitIndex=[0,1,4,7,5,2,3,6];
+const ratio=(n,min,max)=>Math.max(min,Math.min(max,n));
+const sampleHex=hex=>hex.match(/\w\w/g).map(x=>parseInt(x,16));
+function getSheet(name){
+  if(!atlases[name]){
+    const image=new Image();image.src='./assets/atelier/'+name+'.webp';atlases[name]=image;
   }
-  function oval(x,y,rx,ry,color,border,width) {
-    c.beginPath();c.ellipse(x,y,rx,ry,0,0,Math.PI*2);paint(color,border,width);
-  }
-  function box(x,y,w,h,r,color,border,width) {
-    c.beginPath();c.roundRect(x,y,w,h,r);paint(color,border,width);
-  }
-  function shape(points,color,border,width) {
-    c.beginPath();c.moveTo(...points[0]);
-    for(const point of points.slice(1)) {
-      if(point.length===2)c.lineTo(...point);
-      if(point.length===4)c.quadraticCurveTo(...point);
-      if(point.length===6)c.bezierCurveTo(...point);
-    }
-    if(color)c.closePath();
-    paint(color,border,width);
-  }
-  return {c,oval,box,shape};
+  return atlases[name];
 }
-
-export function character(canvas,appearance,pose='look',frame=0,activity='') {
-  const a=appearance?.design===2?appearance:avatarFrom(appearance);
-  const {c,oval,box,shape}=illustrator(canvas);
-  const phase=frame*Math.PI/4, sway=Math.sin(phase), walk=['walk','run','climb'].includes(pose);
-  const stride=walk?(pose==='run'?7:4)*sway:0;
-  const seated=['sit','sleep','eat','drink','read'].includes(pose);
-  let bounce=walk?-Math.abs(sway)*2:Math.sin(frame/7)*.45;
-  if(pose==='joy')bounce=-Math.abs(sway)*5;
-  const coat=clothes[a.clothColor], h=hair[a.hairColor], s=skin[a.skin], cheek=blush[a.skin];
-  const turned=canvas.dataset.direction==='left'?-1:1;
-  oval(48,86,25,5,'#70604732');
-  c.save();
-  c.translate(48,84);c.scale(turned*(a.body===1?.94:a.body===2?1.07:1),a.height===1?.93:a.height===2?1.06:1);
-  c.translate(-48,-84+bounce+(seated?5:0));
-  if(pose==='sleep'){c.translate(49,60);c.rotate(-.22);c.translate(-49,-60);}
-  if(a.hair===2||a.hair===5)oval(33,a.hair===5?18:40,10,11,h,ink);
-  if(a.hair===1||a.hair===3)box(23,30,50,31,14,h,ink);
-  if(a.bag)box(29,54,16,25,6,a.bag===1?'#a37b4f':'#647b68',ink);
-  for(const side of [-1,1]){
-    const shift=side*stride, x=48+side*8, y=seated?78:80-Math.max(0,-shift*.45);
-    box(x-4+shift*.55,y-8,8,10,3,trousers[a.outfit],ink);
-    box(x-5+shift,y-1,11,6,2,shoes[a.shoes],ink);
-    shape([[x-3+shift,y+3],[x+4+shift,y+3]],null,'#c3a585',1);
-  }
-  const hem=a.outfit===3?79:73;
-  shape([[37,55],[42,52],[54,52],[61,56],[a.outfit===3?65:61,hem],[49,hem+2],[a.outfit===3?32:36,hem]],coat,ink);
-  shape([[40,56],[40,hem-3],[35,hem-1]],'#4a3e3022');
-  if(a.outfit===0||a.outfit===2)shape([[49,56],[49,hem]],null,ink,1);
-  if(a.outfit===2)shape([[41,56],[48,62],[56,56]],'#e2ce9d',ink,1);
-  if(a.outfit===4){
-    shape([[42,55],[42,66],[55,66],[55,55]],null,'#dcc99e',3);
-    box(41,65,15,10,2,'#668180',ink,1);
-  }
-  if(a.pattern===1||a.pattern===3)for(const y of [63,67,71])shape([[40,y],[58,y]],null,'#f8ecc48f',1.3);
-  if(a.pattern===2)for(const [x,y] of [[43,64],[52,67],[46,71],[56,72]])oval(x,y,1,1,'#f5ebd0');
-  if(a.pattern===3)for(const x of [44,53])shape([[x,63],[x,72]],null,'#f8ecc48f',1);
-  if(a.bag)shape([[37,57],[41,68]],null,'#6a5342',2.0);
-  if(a.pin)oval(55,61,3,3,'#e8bb62',ink);
-  const lift=pose==='joy'||pose==='surprise'?12:pose==='photo'?10:pose==='eat'||pose==='drink'?Math.max(0,sway)*8:0;
-  for(const side of [-1,1]){
-    c.save();c.translate(48+side*12,58);c.rotate(side*(-.18+stride*.035-lift*.06));
-    box(-3,-1,7,13,3,coat,ink);oval(0,12,3.5,4,s,ink);
-    c.restore();
-  }
-  const headWidths=[20,18.5,22,17.6], radius=headWidths[a.face], faceY=41;
-  oval(48,faceY,radius,a.face===1?17:15.4,s,ink,1.9);
-  for(const side of [-1,1])oval(48+side*(radius-.2),43,a.ears===1?2.4:a.ears===2?4.6:3.5,4.3,s,ink,1.25);
-  shape([[24,40],[24,26,35,20,48,21],[63,20,73,28,71,42],[66,42],[62,33],[57,36],[a.hair===4?50:53,28],[48,37],[44,32],[40,39],[36,33],[33,43],[27,45]],h,ink,1.8);
-  if(a.hair===3){
-    for(const [x,y] of [[26,37],[32,30],[39,26],[55,26],[63,30],[69,37]])oval(x,y,4.4,4.4,h,ink,.9);
-  }
-  if(a.hair===6)shape([[27,39],[29,29],[33,28],[32,39]],'#4e4136');
-  shape([[32,31],[38,25,47,25],[51,25]],null,'#f1ce9465',1.7);
-  shape([[54,25],[62,26,66,31]],null,'#f1ce9455',1.3);
-  const blink=pose==='sleep'||pose==='joy'||a.eyes===2||frame%48===46;
-  for(const x of [40.5,55.5]){
-    if(a.brows!==3)shape([[x-3,38],[x,37-(a.brows===2?1:0),x+2.5,38]],null,h,a.brows===1?1.5:1.0);
-    if(blink)shape([[x-2.4,43],[x,40.9,x+2.4,43]],null,ink,1.65);
-    else {
-      oval(x,43,a.eyes===4?2.4:a.eyes===3?1.35:1.7,a.eyes===4?3.15:a.eyes===1?1.8:2.55,ink);
-      oval(x+.5,42.15,.67,.67,'#fff2dc');
+export function travelerAssets(){
+  assetsPromise??=Promise.all(atlasNames.map(name=>getSheet(name).decode().catch(()=>{})));
+  return assetsPromise;
+}
+function picture(context,image,index,x,y,w,h){
+  if(!image?.naturalWidth)return;
+  context.drawImage(image,index%4*pixels,Math.floor(index/4)*pixels,pixels,pixels,x,y,w,h);
+}
+function pigment(image,name,index,a){
+  const main=a.hairTint??(a.hairColor?hairPalette[a.hairColor][1]:null);
+  const skin=a.skin?skinPalette[a.skin][1]:null,cloth=clothPalette[a.clothColor]?.[1];
+  if(!main&&!skin&&!cloth&&!a.pattern&&!a.material)return null;
+  const key=[name,index,main,skin,cloth,a.pattern,a.material].join('|');
+  if(variants.has(key))return variants.get(key);
+  const c=document.createElement('canvas');c.width=c.height=pixels;
+  const ctx=c.getContext('2d',{willReadFrequently:true});picture(ctx,image,index,0,0,pixels,pixels);
+  const img=ctx.getImageData(0,0,pixels,pixels),p=img.data;
+  const rgbHair=main?sampleHex(main):null,rgbSkin=skin?sampleHex(skin):null,rgbCloth=cloth?sampleHex(cloth):null;
+  const head=name.startsWith('heads');
+  for(let i=0;i<p.length;i+=4){
+    if(p[i+3]<20)continue;
+    const [r,g,b]=[p[i],p[i+1],p[i+2]],x=i/4%pixels,y=Math.floor(i/4/pixels);
+    const isSkin=r>170&&g>105&&r-g<69&&g-b>9&&g-b<60;
+    const isHair=r>62&&r-g>13&&g-b>9&&r<210&&g<151&&(head||y<67)&&name!=='garments'&&!isSkin;
+    const isFabric=name==='garments'?p[i+3]>220&&y>20&&y<89&&!isSkin:
+      !head&&y>58&&y<101&&(g>r*.81&&g-b>11||b>r*.85&&r>55);
+    const colored=(isHair&&rgbHair)||(isSkin&&name!=='garments'&&(head||y<85)&&rgbSkin)||(isFabric&&rgbCloth);
+    if(colored){
+      const light=(r*.258+g*.582+b*.16);
+      const source=isSkin?190:isHair?104:121;
+      const amount=ratio(light/source,.48,1.41);
+      for(let channel=0;channel<3;channel++)p[i+channel]=Math.round(colored[channel]*amount*.82+[r,g,b][channel]*.18);
     }
-    oval(x+(x<48?-4.1:4.1),47,2.9,1.4,cheek);
-    if(a.glasses) {
-      const rim=a.glasses===3?'#9b763f':ink;
-      if(a.glasses===2)box(x-5,39,10,8,2,null,rim,1.4);
-      else oval(x,43,5,4.4,null,rim,1.5);
+    if(isFabric){
+      const motif=a.pattern===1&&y%9<2||a.pattern===2&&x%9===3&&y%8===4||a.pattern===3&&(x%12===4||y%11===4);
+      const grain=a.material?(a.material===1?(x*13+y*29)%11-5:a.material===2?(x+y*2)%5-2:(x*3+y*2)%4-1):0;
+      for(let channel=0;channel<3;channel++)p[i+channel]+=grain+(motif?23:0);
     }
   }
-  if(a.glasses)shape([[45.5,42],[50.5,42]],null,ink,1.2);
-  if(a.nose===1)oval(48,46,1.4,1.05,cheek);
-  if(a.nose===2)shape([[48,43],[47,46],[48.5,46]],null,cheek,1.2);
-  if(a.beard===2||a.beard===3)shape([[41,49],[48,56,55,49],[54,54],[48,56],[42,54]],a.beard===2?h:'#6d50394e');
-  if(a.beard===1)shape([[42,49],[47,46],[48,48],[50,46],[54,49]],h);
-  if(pose==='surprise'||a.mouth===2)oval(48,50,2.1,2.6,'#9a5844',ink,1.05);
-  else if(pose==='joy'||pose==='eat'||a.mouth===1)shape([[44,49],[52,49],[51,54,48,53],[45,53,44,49]],'#b87159',ink,1.1);
-  else shape([[45.5,49.5],[48,52,50.5,a.mouth===3?51:49.5]],null,ink,1.25);
-  if(a.hat===1){
-    shape([[27,30],[27,15,40,12,49,13],[62,12,68,20,68,30]],'#d7b77f',ink);
-    shape([[29,24],[47,27,67,24],[69,29],[30,32]],'#a88058',ink,1);
-    shape([[21,33],[23,28,35,29],[60,29],[72,26,76,31],[77,36,67,38],[47,35],[26,38],[20,37,21,33]],'#e5c999',ink,1.75);
-    shape([[34,19],[42,15,54,17]],null,'#f3dec0',1.6);
-  }
-  if(a.hat===2){oval(49,14,5,5,'#d9a35c',ink);shape([[27,33],[29,17,49,17],[67,17,71,32]],'#c2914e',ink);box(25,29,48,7,2,'#e1b46d',ink);}
-  if(a.hat===3){shape([[26,33],[24,17,47,17],[65,17,69,31]],'#668b91',ink);shape([[46,32],[59,28,76,35],[72,39,55,36]],'#557980',ink);}
-  if(a.hat===4)oval(48,24,24,7,'#ae6658',ink);
-  if(a.accessory===2){box(36,54,22,4,2,'#ba6c50',ink,1);box(36,57,6,12,2,'#c77e5d',ink,1);}
-  if(a.accessory===3){for(let k=0;k<5;k++)oval(31+Math.cos(k*1.26)*3,32+Math.sin(k*1.26)*3,2.1,2.1,'#eed18f');oval(31,32,1.8,1.8,'#b76852');}
-  if(a.accessory===4)oval(68,46,2,3,'#dfb46f',ink,1);
-  if(a.accessory===1||pose==='photo'){
-    const y=pose==='photo'?45+sway:63;
-    box(44,y,19,11,2,'#665748',ink);box(46,y+1,4,3,1,'#eee0b5');oval(55,y+6,4,4,'#819c9a',ink);
-    if(pose==='photo'&&frame%24===8)oval(56,y+5,2.1,2.1,'#fff7dd');
-  }
-  if(pose==='drink'||pose==='eat'){
-    const y=65-Math.max(0,sway)*9;
-    if(pose==='drink'){box(53,y,11,9,2,'#aec3ae',ink);oval(64,y+4,2.5,3,null,ink,1);}
-    else shape([[49,y],[66,y],[62,y+7,57,y+8],[52,y+6]],'#ddb789',ink);
-  }
-  if(pose==='read')shape([[32,63],[43,60],[48,63],[58,59],[64,63],[61,72],[48,73],[37,71]],'#eaddb9',ink);
-  if(pose==='climb'){shape([[70,58],[67,83]],null,wood,2.4);oval(74,35+sway,2,4,'#87b7bb');}
-  if(pose==='sleep'){c.font='bold 9px sans-serif';c.fillStyle='#6f9293';c.fillText('z',70,26+sway);c.font='bold 7px sans-serif';c.fillText('z',76,19+sway);}
-  if(pose==='joy'||pose==='surprise')for(const [x,y,d] of [[26,18,-1],[69,17,1],[74,25,1]])shape([[x,y],[x+3*d,y-4-Math.abs(sway)]],null,pose==='joy'?'#e5b962':'#b77958',2);
-  if(activity==='rain')shape([[63,38],[63,61],[64,23],[72,10,86,24],[70,28],[54,24]],'#9ab4a6',ink,1.2);
-  if(activity==='snow')box(32,54,29,5,2,'#e3d2b1',ink,1);
-  c.restore();
-  drawRide(activity,{box,oval,shape},sway);
+  ctx.putImageData(img,0,0);
+  variants.set(key,c);
+  if(variants.size>160)variants.delete(variants.keys().next().value);
+  return c;
 }
-
-function drawRide(activity,{box,oval,shape},sway){
-  if(['train','bus'].includes(activity)){
-    const hue=activity==='train'?'#a96c58':'#859664';
-    box(14,51,68,32,7,hue,ink);
-    box(18,54,60,8,3,'#eadbb5',ink);
-    box(22,61,15,12,2,'#b3ccc2',ink);box(59,61,15,12,2,'#b3ccc2',ink);
-    for(const x of [29,68])oval(x,84,5,4,ink);
-    shape([[20,78],[75,78]],null,'#edd8ae',1.6);
-  }
-  if(activity==='boat'){shape([[14,66],[80,66],[71,83],[27,83]],'#7893a0',ink);shape([[16,87],[25,87+sway,39,87],[66,88],[81,85]],null,'#92bec2',2);}
-  if(activity==='plane'){shape([[12,72],[51,66],[70,60],[79,67],[92,73],[87,81],[18,81]],'#b0bfb0',ink);shape([[52,75],[35,89],[48,89],[68,75]],'#d4c9b4',ink);}
-  if(activity==='cycle'){for(const x of [26,72])oval(x,78,10,10,null,ink,2);shape([[26,78],[45,61],[57,78],[39,78],[55,66],[73,78]],null,'#98775c',2);}
+function tinted(ctx,name,index,a,x=0,y=0,w=128,h=128){
+  const image=getSheet(name);if(!image.naturalWidth)return;
+  const colored=pigment(image,name,index,a);
+  if(colored)ctx.drawImage(colored,x,y,w,h);else picture(ctx,image,index,x,y,w,h);
 }
-
+function appearance(input){
+  if(!input||typeof input!=='object')return avatarDefaults;
+  if(!normalized.has(input))normalized.set(input,{...avatarFrom(input),pin:input.pin});
+  return normalized.get(input);
+}
+function glyph(ctx,x,y,id,a,draw){
+  const tune=a.tune?.[id]??{};
+  ctx.save();ctx.translate(x+(tune.x??0)*.34,y+(tune.y??0)*.34);ctx.rotate((tune.angle??0)*Math.PI/130);
+  ctx.scale(1+(tune.size??0)*.042,1+(tune.size??0)*.042);
+  draw(tune.gap??0);ctx.restore();
+}
+function facialFeatures(ctx,a){
+  const ink='#694937',base=skinPalette[a.skin]?.[1]??'#f0bd91';
+  const tuned=key=>Object.values(a.tune?.[key]??{}).some(Boolean);
+  const dot=(x,y,rx,ry,color)=>{ctx.beginPath();ctx.ellipse(x,y,rx,ry,0,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();};
+  const stroke=(points,color=ink)=>{ctx.beginPath();ctx.moveTo(...points[0]);ctx.quadraticCurveTo(...points[1]);ctx.lineWidth=.8;ctx.strokeStyle=color;ctx.lineCap='round';ctx.stroke();};
+  if(a.eyes||tuned('eyes')){
+    for(const x of [58,72])dot(x,48,4,5,base);
+    glyph(ctx,65,48,'eyes',a,gap=>{
+      for(const side of [-1,1]){
+        const x=side*(6.7+gap*.28);
+        if(a.eyes===2)stroke([[x-2,0],[x,-3.2,x+2,0]]);
+        else {dot(x,0,a.eyes===4?2.1:1.5,a.eyes===1?1.9:2.7,ink);dot(x+.4,-.75,.55,.55,'#fff2c6');}
+      }
+    });
+  }
+  if(a.brows||tuned('brows'))glyph(ctx,65,42,'brows',a,gap=>{
+    if(a.brows===3)return;
+    for(const side of [-1,1]){
+      const x=side*(6.4+gap*.29);stroke([[x-2,0],[x,-1.2-side*(a.brows-1)*.6,x+2,0]],'#8b654b');
+    }
+  });
+  if(a.nose||tuned('nose'))glyph(ctx,65,52,'nose',a,()=>dot(0,0,a.nose===1?1.15:.76,1,'#c58663'));
+  if(a.mouth||tuned('mouth')){
+    dot(65,56,3.9,2.55,base);
+    glyph(ctx,65,56,'mouth',a,()=>{
+      if(a.mouth===2)dot(0,0,1.5,1.6,ink);
+      else stroke([[-2,0],[0,a.mouth===1?3.3:1.8,2,0]]);
+    });
+  }
+  if(a.beard)glyph(ctx,65,57,'mouth',a,()=>{
+    if(a.beard===1)stroke([[-3,-2],[0,-4,3,-2]]);
+    else dot(0,3,3.2,1.3,a.beard===2?ink:'#987762');
+  });
+  if(a.ears||tuned('ears'))glyph(ctx,65,49,'ears',a,gap=>{
+    for(const x of [-16-gap*.25,16+gap*.25]){
+      dot(x,0,a.ears===1?1.3:2.4,2.7,base);dot(x,0,1,1.5,'#d39171');
+    }
+  });
+}
+function paperDoll(ctx,a,blink){
+  const face=a.tune?.face??{},body=a.tune?.body??{};
+  const bodyScale=1+(a.body===1?-.055:a.body===2?.068:0)+(body.size??0)*.012;
+  const detail=(i,x,y,w,h)=>picture(ctx,getSheet('details'),i,x,y,w,h);
+  ctx.save();ctx.translate(64,112);
+  ctx.scale(bodyScale,1+(a.height===1?-.065:a.height===2?.07:0)+(a.tune?.height?.size??0)*.013);
+  ctx.translate(-64,-112);
+  if(a.bag)detail(11+a.bag,23,48,60,57);
+  tinted(ctx,'garments',outfitIndex[a.outfit],a,18,57,92,62);
+  if(a.layer)detail(a.layer===1?14:15,35,58,60,39);
+  if(a.shoes){
+    ctx.save();ctx.globalAlpha=.35;ctx.globalCompositeOperation='source-atop';
+    ctx.fillStyle=['','#e0c9a2','#bf5d4c','#667d5e'][a.shoes];ctx.fillRect(45,102,39,11);ctx.restore();
+  }
+  ctx.save();ctx.translate(64+(face.x??0)*.38,44+(face.y??0)*.38);ctx.rotate((face.angle??0)*Math.PI/170);
+  ctx.scale((a.face===1?.91:a.face===2?1.09:a.face===3?.88:1)+(face.size??0)*.021,1+(face.gap??0)*.015);
+  ctx.translate(-64,-44);
+  tinted(ctx,'heads',a.hair,a,19,0,90,72);
+  facialFeatures(ctx,blink?{...a,eyes:2}:a);
+  if(a.hat)detail(a.hat-1,21,-6,87,56);
+  if(a.glasses)detail(3+a.glasses,40,31,49,32);
+  if(a.accessory===3||a.accessory===4)detail(a.accessory===3?10:11,a.accessory===3?38:36,a.accessory===3?19:38,24,25);
+  ctx.restore();
+  if(a.accessory===1||a.accessory===2)detail(a.accessory===1?8:9,45,a.accessory===1?65:47,41,35);
+  if(a.pin){ctx.fillStyle='#caa65d';ctx.strokeStyle='#694937';ctx.lineWidth=1;ctx.beginPath();ctx.arc(76,72,2.8,0,Math.PI*2);ctx.fill();ctx.stroke();}
+  ctx.restore();
+}
+function drawCharacter(canvas,a,pose,frame){
+  const ctx=canvas.getContext('2d');ctx.setTransform(canvas.width/128,0,0,canvas.height/128,0,0);
+  ctx.clearRect(0,0,128,128);
+  const direction={left:'west',right:'east'}[canvas.dataset.direction]??canvas.dataset.direction??'south';
+  const [idle,left,right,mirror]=directions[direction]??directions.south;
+  const blink=frame%38>=36,action=actions[pose],beat=Math.floor(frame/2)%4;
+  const moving=pose==='walk',fullDoll=!action&&!moving&&idle===0&&(canvas.hasAttribute('data-doll')||a.hair||a.hat||a.outfit||a.layer||a.eyes||a.glasses||a.accessory||a.face||a.shoes||a.bag!==1);
+  ctx.fillStyle='#6b51353b';ctx.beginPath();ctx.ellipse(64,119,pose==='sleep'?31:23,4,0,0,Math.PI*2);ctx.fill();
+  if(fullDoll){paperDoll(ctx,a,blink);return;}
+  ctx.save();
+  if(mirror){ctx.translate(128,0);ctx.scale(-1,1);}
+  if(action)tinted(ctx,'actions',action[Math.floor(frame/3)%action.length],a);
+  else {
+    const frameId=moving?[idle,left,idle,right][beat]:(idle===0&&blink?1:idle);
+    if(a.hair>0&&!fullDoll){
+      ctx.save();ctx.beginPath();ctx.rect(0,58,128,70);ctx.clip();
+      tinted(ctx,'directions',frameId,a);ctx.restore();
+      const head=direction.startsWith('north')?'heads-back':direction==='south'?'heads':'heads-profile';
+      const bob=moving&&beat%2?-2:0;
+      tinted(ctx,head,a.hair,a,20,bob,87,70);
+      if(a.hat)picture(ctx,getSheet('details'),a.hat-1,26,0,77,50);
+    }else tinted(ctx,'directions',frameId,a);
+  }
+  ctx.restore();
+}
+export function character(canvas,input,pose='look',frame=0){
+  const a=appearance(input);
+  canvas._spriteInput=[a,pose,frame];
+  if(!canvas._waitingForArt&&atlasNames.some(name=>!getSheet(name).naturalWidth)){
+    canvas._waitingForArt=true;
+    travelerAssets().then(()=>{canvas._waitingForArt=false;if(canvas._spriteInput)drawCharacter(canvas,...canvas._spriteInput);});
+  }
+  drawCharacter(canvas,a,pose,frame);
+}
 export function animateWorld(root,avatar,reduced){
   const portraits=[...root.querySelectorAll('canvas[data-person]:not([data-static])')];
   let frame=0;
-  function draw(){
-    for(const canvas of portraits)character(canvas,canvas._avatar??avatar,canvas.dataset.pose,frame,canvas.dataset.activity);
-  }
-  draw();
-  if(reduced||!portraits.length)return ()=>{};
-  const timer=setInterval(()=>{
-    if(document.hidden)return;
-    frame++;
-    if(frame%84===0)for(const canvas of portraits)if(canvas.hasAttribute('data-idle')) {
-      canvas.dataset.pose=['look','read','drink','sleep','photo'][Math.floor(frame/84)%5];
-    }
-    draw();
-  },115);
+  const draw=()=>portraits.forEach(canvas=>character(canvas,canvas._avatar??avatar,canvas.dataset.pose,frame));
+  draw();if(reduced||!portraits.length)return ()=>{};
+  const timer=setInterval(()=>{if(!document.hidden){frame++;draw();}},105);
   return ()=>clearInterval(timer);
 }

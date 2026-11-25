@@ -23,7 +23,7 @@ try {
   const page=await ctx.newPage();
   page.setDefaultTimeout(12000);
   const errors=[];
-  page.on('pageerror',error=>{errors.push(error.message);console.error(error.stack);});
+  page.on('pageerror',error=>{if(!errors.includes(error.message)){errors.push(error.message);console.error(error.stack);}});
   let starts=0,stops=0;
   await page.exposeFunction('testStart',()=>starts++);await page.exposeFunction('testStop',()=>stops++);
   await page.addInitScript(()=>{Object.defineProperty(navigator,'geolocation',{value:{
@@ -31,7 +31,7 @@ try {
     watchPosition(ok){window.testStart();setTimeout(()=>ok({coords:{latitude:36.7,longitude:137.2,accuracy:8,speed:1.2,altitude:null,altitudeAccuracy:null},timestamp:Date.now()}),25);return 99;},clearWatch(){window.testStop();}
   }});});
   const visit=async h=>{await page.evaluate(hash=>location.hash=hash,h);await page.waitForFunction(hash=>location.hash===hash,h);await page.waitForTimeout(120);};
-  const shot=async n=>{if(process.env.ARTIFACT_DIR)await page.screenshot({path:process.env.ARTIFACT_DIR+'/rpg-'+n+'.png'});};
+  const shot=async n=>{if(process.env.ARTIFACT_DIR)await page.screenshot({path:process.env.ARTIFACT_DIR+'/rpg-'+n+'.png',animations:'disabled'});};
   const tile=await readFile(new URL('public/assets/icon-192.png',project));let tileRequests=0;
   await page.route('https://cyberjapandata.gsi.go.jp/**',r=>{tileRequests++;return r.fulfill({body:tile,contentType:'image/png'});});
   await page.goto(origin);
@@ -49,7 +49,7 @@ try {
   await page.getByRole('button',{name:'髪・肌',exact:true}).tap();
   await page.getByRole('button',{name:'髪色',exact:true}).tap();
   await shot('avatar');await page.getByText('この姿で家へ').tap();await page.getByRole('heading',{name:'はるの家'}).waitFor();
-  await page.getByRole('button',{name:'床をタップして旅人を移動'}).tap();await shot('house');
+  await page.locator('[data-home-view]').tap({position:{x:190,y:370}});await shot('house');
   await page.locator('.stage-guide').getByText('地図をひらく').tap();await page.locator('#pref-choice').selectOption('JP-26');await page.getByRole('heading',{name:'京都府'}).waitFor();
   assert.equal(await page.locator('#pref-choice option').count(),47);await shot('atlas');
   await page.getByText('ここを散策する').tap();await page.getByText('京都府を散策').waitFor();await page.getByRole('button',{name:'カメラを構える'}).tap();await page.getByText('旅人は風景にカメラを向けました。').waitFor();
@@ -80,8 +80,21 @@ try {
   await page.getByLabel('スタンプ帳の名前').fill('灯台めぐり');await page.getByLabel('場所を1行に1か所ずつ').fill('海辺の灯台');
   await page.getByRole('button',{name:'スタンプ帳を作る'}).tap();
   await page.getByRole('link',{name:'海辺の灯台'}).waitFor();
-  await visit('#decorate');await page.getByLabel('窓の下').selectOption('cup');await page.locator('[name=wallPhoto]').selectOption({index:1});await page.getByText('配置を保存').tap();await page.getByRole('heading',{name:'はるの家'}).waitFor();await page.locator('.floor-item [data-item=cup]').waitFor();
-  await page.locator('.wall-photo').waitFor();await visit('#avatar');await page.getByRole('button',{name:'小物',exact:true}).tap();await page.getByRole('button',{name:'記念品',exact:true}).tap();await page.getByRole('button',{name:'陶器のカップ',exact:true}).tap();await page.getByText('できあがり').tap();await page.getByRole('heading',{name:'はるの家'}).waitFor();
+  await visit('#decorate');
+  const roomCanvas=page.locator('[data-home-view]');
+  await roomCanvas.waitFor();
+  assert.equal(await page.locator('#decor-form').count(),0);
+  await page.getByRole('button',{name:'陶器のカップ'}).tap();
+  const rect=await roomCanvas.boundingBox();
+  await roomCanvas.tap({position:{x:rect.width*.27,y:rect.height*.81}});
+  await page.getByText('陶器のカップを置きました。',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'↻ 回す'}).tap();
+  await page.getByRole('button',{name:'写真',exact:true}).tap();
+  await page.getByRole('button',{name:'駅前の喫茶店',exact:true}).tap();
+  await page.getByRole('button',{name:'配置を保存',exact:true}).tap();
+  await page.getByRole('heading',{name:'はるの家'}).waitFor();
+  await page.getByRole('button',{name:'家具を使う'}).tap();await page.getByRole('button',{name:'陶器のカップ',exact:true}).waitFor();
+  await visit('#avatar');await page.getByRole('button',{name:'小物',exact:true}).tap();await page.getByRole('button',{name:'記念品',exact:true}).tap();await page.getByRole('button',{name:'陶器のカップ',exact:true}).tap();await page.getByText('できあがり').tap();await page.getByRole('heading',{name:'はるの家'}).waitFor();
   await visit('#shop');
   await page.getByLabel('自分の歩数目標').fill('1000');await page.getByText('目標を保存').tap();
   await page.getByLabel('その日の歩数').fill('1001');await page.getByText('歩数を記録').tap();
@@ -97,14 +110,74 @@ try {
   await visit('#atlas?pref=JP-26&view=map');await page.waitForFunction(()=>document.querySelector('.tile-widget canvas'));await page.getByLabel('地図を拡大').tap();assert.ok(tileRequests>0);
   await visit('#pilot');await page.getByLabel('日付',{exact:true}).fill('2026-11-25');await page.getByLabel('路面電車とバスの両方を使う').check();await page.locator('[name=order]').selectOption('fare');
   await page.getByText('経路を検索',{exact:true}).tap();await page.locator('.pilot-result').first().waitFor();await page.getByText('実際の地図で見る').first().tap();await page.locator('details[data-route-legs][open] canvas').first().waitFor();
-  for (const width of [320,390,768,1280]){await page.setViewportSize({width,height:844});for(const hash of ['#village','#atlas','#avatar','#activity','#memories','#menu','#pilot','#home','#shop','#companions','#stamps']){await visit(hash);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'overflow '+width+hash);}}
+  for (const width of [320,390,768,1280]){await page.setViewportSize({width,height:844});for(const hash of ['#village','#atlas','#avatar','#activity','#memories','#menu','#pilot','#home','#shop','#companions','#stamps','#decorate','#type','#cabinet','#cottage/garden']){await visit(hash);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'overflow '+width+hash);}}
   await page.setViewportSize({width:390,height:844});
   await page.waitForFunction(()=>navigator.serviceWorker.controller!==null);await ctx.setOffline(true);
   await visit('#companions');await page.getByText('街の住人を連れていく練習').tap();await page.locator('[name=guest][value=clover]').check();await page.getByText('試遊の旅を終えて絵はがきを受け取る').tap();await page.getByText('よつばとの思い出').waitFor();
-  await visit('#cottage');await page.reload();await page.getByRole('heading',{name:'はるの家'}).waitFor();await page.locator('[data-item=cup]').waitFor();
+  await visit('#cottage');await page.reload();await page.getByRole('heading',{name:'はるの家'}).waitFor();await page.getByRole('button',{name:'家具を使う'}).tap();await page.getByRole('button',{name:'陶器のカップ',exact:true}).waitFor();
   await visit('#memories');await page.locator('[data-memory-photo]').waitFor();await page.reload();await page.getByRole('heading',{name:/駅前の喫茶店/}).waitFor();
   await visit('#pilot');await page.getByText('経路を検索',{exact:true}).tap();await page.locator('#pilot-results').waitFor();await ctx.setOffline(false);
   await visit('#welcome');await page.getByText('案内をスキップ').tap();await page.getByRole('heading',{name:'風待ちの街'}).waitFor();await page.reload();await page.getByRole('heading',{name:'風待ちの街'}).waitFor();
+  await visit('#avatar');
+  await page.getByRole('button',{name:'肩までのボブ',exact:true}).tap();await shot('atelier');
+  await page.getByRole('button',{name:'右へ回す'}).tap();await page.getByText('右斜め',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'右へ回す'}).tap();await page.getByText('右向き',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'右へ回す'}).tap();await page.getByText('右斜め後ろ',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'右へ回す'}).tap();await page.getByText('背面',{exact:true}).waitFor();await shot('avatar-turn');
+  await page.getByRole('button',{name:'顔',exact:true}).tap();await page.getByRole('button',{name:'目',exact:true}).tap();
+  await page.getByText('位置・形を微調整').tap();await page.locator('input[data-tuning=gap]').fill('5');await shot('avatar-tune');
+  await page.getByRole('button',{name:/コーデを保存/}).tap();await page.getByText('コーデを保存しました。').waitFor();
+  await page.getByRole('button',{name:'できあがり'}).tap();await page.getByRole('heading',{name:'はるの家'}).waitFor();
+  await page.getByRole('button',{name:'家具を使う'}).tap();await page.getByRole('button',{name:'窓辺のベッド'}).tap();
+  await page.getByText('毛布にくるまって、ひと休み。').waitFor();await shot('house-play');
+
+  await visit('#decorate/garden');
+  const stage=page.locator('[data-home-view]');
+  await stage.waitFor();
+  await page.getByRole('button',{name:'睡蓮の小池'}).tap();
+  await stage.focus();await stage.press('ArrowDown');await stage.press('ArrowRight');await stage.press('Enter');
+  await page.getByText('睡蓮の小池を置きました。').waitFor();await shot('garden-edit');
+  await page.getByRole('button',{name:'↻ 回す'}).tap();
+  await page.getByRole('button',{name:'片づける'}).tap();
+  await page.getByRole('button',{name:'睡蓮の小池'}).waitFor();
+  const queue=page.locator('[data-furnish=pond]');
+  await queue.scrollIntoViewIfNeeded();
+  const a=await queue.boundingBox(), g=await stage.boundingBox();
+  const cdp=await ctx.newCDPSession(page);
+  const x0=a.x+a.width/2,y0=a.y+a.height/2,x1=g.x+g.width*.53,y1=g.y+g.height*.55;
+  const touch=(type,points)=>cdp.send('Input.dispatchTouchEvent',{type,touchPoints:points.map(([x,y],id)=>({x,y,id}))});
+  await touch('touchStart',[[x0,y0]]);
+  for(let i=1;i<=14;i++)await touch('touchMove',[[x0+(x1-x0)*i/14,y0+(y1-y0)*i/14]]);
+  await touch('touchEnd',[]);
+  await cdp.detach();
+  await page.getByText('睡蓮の小池を置きました。').waitFor();
+  await page.getByRole('button',{name:'＋ 広げる'}).tap();
+  await page.waitForURL('**/#decorate/studio');
+  await page.getByRole('link',{name:'小さな離れ',exact:true}).waitFor();
+  await page.getByRole('button',{name:'配置を保存'}).tap();await page.waitForURL('**/#cottage/studio');
+  await page.getByRole('link',{name:'庭',exact:true}).tap();await page.getByRole('button',{name:'家具を使う'}).tap();
+  await page.getByRole('button',{name:'睡蓮の小池',exact:true}).waitFor();await shot('garden-play');
+
+  await visit('#type');await page.getByRole('button',{name:/短い話/}).tap();
+  await shot('fortune-question');
+  for(let n=0;n<10;n++)await page.locator('[data-omen]').first().tap();
+  await page.getByRole('heading',{name:'ふたつの旅のかたち'}).waitFor();await shot('fortune-result');
+  await page.getByRole('button',{name:'この結果を旅の手帖に残す'}).tap();await page.getByText('結果を旅の手帖に残しました。').waitFor();
+  await page.getByRole('button',{name:'もう一度はじめる'}).tap();await page.getByRole('button',{name:/ゆっくり話す/}).tap();
+  for(let n=0;n<32;n++)await page.locator('[data-omen]').nth(n%4).tap();
+  await page.getByRole('heading',{name:'ふたつの旅のかたち'}).waitFor();
+  await visit('#activity');await page.locator('[name=activity]').selectOption('hike');
+  await page.locator('[name=pref]').selectOption('JP-16');await page.getByLabel('訪ねた場所').fill('立山 室堂');
+  await page.getByRole('button',{name:'自分の体験として記録'}).tap();
+  await page.getByText('雷鳥の小さな彫刻が図鑑に届きました。').waitFor();
+  await page.getByRole('link',{name:'図鑑をひらく'}).tap();
+  await page.getByText('1 / 8 種').waitFor();await shot('cabinet');
+  await page.getByText('地元の話を書き添える').tap();
+  await page.locator('#proposal-form [name=place]').fill('海辺の町');await page.getByLabel('品物や伝承の題名').fill('春の木舟');
+  await page.getByLabel('伝えたいこと').fill('海辺の春の舟を描きたいです。');
+  await page.getByRole('button',{name:'提案の下書きを保存'}).tap();await page.getByText('海辺の町 · 春の木舟').waitFor();
+  const proposalDownload=page.waitForEvent('download');await page.getByRole('button',{name:'書き出す'}).tap();
+  assert.match((await proposalDownload).suggestedFilename(),/txt$/);
   const ctx2=await browser.newContext({viewport:{width:320,height:680},reducedMotion:'reduce'});const denied=await ctx2.newPage();await denied.addInitScript(()=>{Object.defineProperty(navigator,'geolocation',{value:{watchPosition(_ok,fail){setTimeout(fail,10);return 3;},clearWatch(){}}});});await denied.goto(origin+'#activity');await denied.getByText('現在地から候補を探す').click();await denied.getByText('位置情報を取得できません。手入力で記録できます。').waitFor();await ctx2.close();
   assert.deepEqual(errors,[]);console.log('PASS touch stage and dressing, personal stamp book, hand-entered and GPS visits, coin purchase and reward, companion invitation and gratitude, photo and travel booklet, four viewport widths, Toyama maps and offline PWA.');
 } finally {await browser.close();server.close();}

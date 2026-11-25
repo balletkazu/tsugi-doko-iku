@@ -1,0 +1,113 @@
+.atelier{--vellum:#f7ebd2;--accent:#526448;--rule:#cdb489;--ink:#594831;background:var(--vellum)}
+.atelier-view{position:relative;display:grid;justify-items:center;min-height:309px;background:#c7be82 url('./assets/world/open-garden.webp') center/cover;overflow:hidden;isolation:isolate;border-bottom:4px double #af8c58}
+.atelier-view::before{position:absolute;inset:0;z-index:-1;content:"";background:linear-gradient(90deg,#312e1d39,transparent 24%,transparent 76%,#312e1d39)}
+.atelier-hero{display:grid;place-items:center;width:min(67%,280px);height:250px;padding:0;background:transparent;border:0;z-index:1}
+.atelier-hero canvas{width:100%;max-width:258px;height:auto;filter:drop-shadow(0 4px 3px #553b274a);image-rendering:auto}
+.atelier-name{position:absolute;left:10px;top:11px;display:flex;align-items:center;gap:5px;max-width:50%;padding:3px 5px;background:#fbefd8fa;border:1px solid #9d815a;border-radius:7px;font-weight:750;color:#553e2b;font-size:.72rem;z-index:2}
+.atelier-name input{min-height:34px;width:min(6em,100%);min-width:0;color:#503e2c;border:0;padding:3px 4px;background:#fff8e3}
+.atelier-controls{display:flex;align-items:center;gap:8px;margin-top:-8px;margin-bottom:9px;z-index:2;border:1px solid #a08057;border-radius:22px;background:#f8efd8;box-shadow:0 2px 3px #443b2950;padding:2px 4px}
+.atelier-controls button{width:43px;height:40px;border:0;background:transparent;font-size:1.45rem;color:#6a5a3a}
+.atelier-controls span{width:6em;text-align:center;font-weight:750;font-size:.73rem;color:#584635}
+.atelier-note{position:absolute;right:9px;top:9px;margin:0;max-width:40%;font-size:.78rem;font-weight:bold}
+.atelier-note:not(:empty){border:1px solid #9d815a;border-radius:8px;background:#fff3cd;padding:5px 8px}
+.atelier .fitting-options{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.atelier .fitting-options button{padding:3px 2px 5px}
+.atelier .fitting-options button canvas{width:min(100%,70px);aspect-ratio:1;image-rendering:auto}
+.atelier .fitting-options.swatches{grid-template-columns:repeat(auto-fill,minmax(46px,1fr));max-height:236px;overflow:auto}
+.atelier .swatches button{min-height:49px;gap:3px}
+.atelier .swatches i{width:28px;height:28px;border:1px solid #6e574587;border-radius:50%}
+.atelier .swatches span{font-size:.54rem}
+.fitting-tune{margin:8px;color:#5d4f36}
+.fitting-tune summary{padding:8px 6px}
+.fitting-tune input[type=range]{width:100%;accent-color:#6e7850}
+.tune-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 13px;padding:10px;background:#f9f0d9;border:1px solid #d6c29b;border-radius:8px}
+.tune-grid label{display:grid;align-items:center}
+.tune-grid button,.atelier-sets button,.house-dock button,.house-areas a,.house-areas button,.house-map-control button,.house-choices button{background:#fff1d3;color:#624c32;border:1px solid #b89d71;border-radius:8px;min-height:42px;padding:4px 9px;font-weight:700;text-decoration:none}
+.hair-color-free{display:flex;gap:9px;align-items:center;font-weight:700;padding:4px}
+.hair-color-free input{min-height:44px}
+.atelier-sets{display:flex;flex-wrap:wrap;gap:6px;padding:4px 9px}
+[data-looks]{display:flex;flex-wrap:wrap;gap:5px;padding:5px 9px}
+[data-looks] button{min-width:44px;display:grid;place-items:center;background:#fff0d4;border:1px solid #bca075;border-radius:6px;padding:1px 2px;color:#5b4730}
+[data-looks] canvas{width:49px;height:49px}
+.game-view .world.home-play,.game-view .world.fortune,.game-view .world.cabinet{padding:0 0 60px;background:#f6ebd5;color:#4b412c}
+.house-header{display:grid;grid-template-columns:48px 1fr auto;align-items:center;gap:9px;padding:max(8px,env(safe-area-inset-top)) 9px 8px;background:#eaddbc;border-bottom:1px solid #ba9f71}
+.house-header h1{font-size:clamp(1rem,4.7vw,1.55rem);margin:0;text-align:center}
+.house-header>a:first-child{font-size:2rem;text-align:center;text-decoration:none;line-height:1;min-height:44px}
+.house-save{padding:7px 10px;border:1px solid #394e34;background:#516849;border-radius:7px;color:#fff5d7;text-decoration:none;min-height:40px;font-size:.79rem;display:inline-flex;align-items:center;font-weight:750}
+.house-areas{display:flex;align-items:center;gap:5px;overflow:auto;padding:5px 8px;background:#6d5e43}
+.house-areas a{padding:7px 13px;min-height:36px;white-space:nowrap;font-size:.78rem}
+.house-areas a[aria-current=page]{background:#dce1bc;color:#405639}
+.house-areas button{min-height:36px;font-size:.72rem;white-space:nowrap;padding:5px}
+.house-stage{position:relative;isolation:isolate;height:clamp(350px,64svh,720px);background:#6b6445}
+.home-play[data-edit=true] .house-stage{height:clamp(290px,53svh,620px)}
+.house-stage>canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+.house-map-control{position:absolute;z-index:1;right:7px;top:8px;display:flex;gap:3px}
+.house-map-control button{min-height:40px;min-width:38px;background:#f5e6c5e8;font-size:.77rem}
+.house-stage [data-house-status]{position:absolute;bottom:0;left:50%;width:max-content;max-width:89%;transform:translateX(-50%);margin:0 0 8px;pointer-events:none;font-size:.78rem;font-weight:750;z-index:2}
+.house-stage [data-house-status]:not(:empty){background:#fff4d5;border:1px solid #bb9e70;padding:6px 10px;border-radius:8px}
+.house-dock{background:#eee0bd;padding:5px 8px 7px;border-top:2px solid #aa8d64}
+.house-dock nav,.house-dock.visits,.furniture-actions,.finish-strip{display:flex;align-items:center;gap:5px}
+.house-dock nav{overflow:auto}
+.house-dock button,.house-dock a{white-space:nowrap;font-size:.74rem;line-height:1.35}
+.house-dock button[aria-pressed=true]{background:#67764e;color:#fff8e1;border-color:#4f6243}
+.house-dock.visits{flex-wrap:wrap;justify-content:space-around}
+.house-dock.visits a{display:flex;align-items:center;min-height:43px;color:#4a5739;text-decoration:none;font-weight:bold;padding:5px}
+.house-toolbox{padding-top:5px}
+.house-toolbox p{margin:3px;font-size:.8rem}
+.furniture-strip,.finish-strip{display:flex;overflow:auto;gap:5px;padding:3px 1px;scrollbar-width:thin}
+.finish-strip span{min-width:36px;font-size:.74rem}
+.furniture-strip button{padding:4px;flex:0 0 auto;display:grid;justify-items:center;gap:2px;min-height:65px;min-width:58px;touch-action:pan-x}
+.furniture-strip canvas{width:43px;height:43px}
+.furniture-actions{padding-top:4px;flex-wrap:wrap}
+.furniture-actions span{font-size:.77rem;flex:1 0 auto}
+.house-choices{position:absolute;left:9px;bottom:43px;right:9px;z-index:2;display:flex;flex-wrap:wrap;gap:5px;background:#f4e6cb;padding:8px;border:1px solid #a68959;border-radius:10px;box-shadow:0 4px 12px #654e3d46}
+.house-choices[hidden]{display:none}
+.fortune{--forest:#435b4a;--edge:#cfb47d}
+.fortune .dressing-header,.cabinet .dressing-header{grid-template-columns:35px 1fr auto}
+.dressing-header .fortune-leave{font-size:.76rem;font-weight:700;color:#40583e;text-decoration:underline;padding:7px;line-height:1.4;min-height:44px;display:flex;align-items:center}
+.fortune-scene img{width:100%;aspect-ratio:1.62;object-fit:cover;object-position:center 48%}
+.fortune-letter{position:relative;margin:-12px 10px 12px;padding:14px 14px 17px;border:double 4px #bca075;border-radius:11px;background:#fff2d7;box-shadow:0 4px 14px #54473742}
+.fortune-letter h2{font-family:var(--serif);font-size:clamp(1.04rem,4.9vw,1.46rem);margin:4px 0 8px}
+.fortune-letter h3{font-family:var(--serif)}
+.fortune-letter p{font-size:.9rem;margin:5px 0 10px}
+.fortune-progress{display:flex;align-items:center;gap:10px}
+.fortune-progress progress{flex:1;accent-color:#698253;min-width:20px}
+.omen-choices,.fortune-results{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.omen-choices button,.fortune-results section{display:grid;align-content:center;justify-items:center;text-align:center;gap:3px;padding:4px 5px 9px;border:1px solid #c3a87c;border-radius:8px;color:#594732;background:#f7e7c9;line-height:1.4;font-weight:700;font-size:.82rem}
+.omen-choices button[aria-pressed=true]{background:#e3e5c4;border-color:#76916d}
+.omen-choices span:not(.relic-tile){min-height:2.4em}
+.fortune-consent{padding-top:8px}
+.fortune-consent label{display:flex;align-items:center;gap:8px;min-height:44px}
+.fortune-results .relic-tile{width:64px;height:64px}
+.relic-tile,.furniture-tile{display:block;width:clamp(44px,17vw,72px);aspect-ratio:1;background-repeat:no-repeat;background-size:400% 200%;background-image:url('./assets/atelier/relics.webp')}
+.furniture-tile{background-image:url('./assets/atelier/furnishings.webp');background-size:400% 400%}
+.relic-0,.relic-4,.furniture-12{background-position-x:0%}.relic-1,.relic-5,.furniture-13{background-position-x:33.3333%}.relic-2,.relic-6,.furniture-14{background-position-x:66.6667%}.relic-3,.relic-7,.furniture-15{background-position-x:100%}
+.relic-4,.relic-5,.relic-6,.relic-7,.furniture-12,.furniture-13,.furniture-14,.furniture-15{background-position-y:100%}
+.cabinet-banner{position:relative;isolation:isolate;min-height:132px;display:grid;align-items:end;background:#98a67b}
+.cabinet-banner img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1}
+.cabinet-banner>div{margin:10px;padding:7px 10px;width:max-content;background:#f7ead2ed;border-radius:8px;border:1px solid #b39265}
+.cabinet-banner h2,.cabinet-banner p,.cabinet-shelves h3{margin:0}
+.cabinet-search{display:flex;align-items:end;gap:6px;padding:7px 10px}
+.cabinet-search label{min-width:0;flex:1}
+.cabinet-search input{width:100%}
+.cabinet-shelves{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,255px),1fr));gap:6px;padding:7px 10px}
+.cabinet-shelves article{display:grid;grid-template-columns:62px 1fr;gap:8px;align-items:center;padding:8px 7px;background:#fff2d8;border:1px solid #d3b991;border-radius:8px}
+.cabinet-shelves article[data-owned]{border-color:#9aab7a;background:#e7e8cc}
+.cabinet-shelves details{font-size:.78rem}
+.cabinet-shelves a{overflow-wrap:anywhere}
+.proposal-desk{margin:8px 10px;background:#f9efd5;border:1px solid #cdb184;border-radius:8px;padding:9px}
+.proposal-desk li{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.episode{display:flex;flex-wrap:wrap;align-items:center;gap:7px;padding:7px;margin:7px 0 16px;background:#efe2c6;border:1px solid #cdad77;border-radius:12px}
+.episode canvas{width:79px;height:79px}.episode h2,.episode p{margin:2px 0}.episode-keepsake{display:flex;align-items:center;gap:6px}.episode-keepsake span:first-child{width:42px}
+@media(max-width:395px){.atelier-view{min-height:255px}.atelier-hero{height:201px;width:63%}.atelier-controls{margin-top:0}.house-stage{height:60svh}.omen-choices button{font-size:.76rem}}
+@media(prefers-reduced-motion:no-preference){.fortune-letter{animation:parlor-enter .29s ease-out both}@keyframes parlor-enter{from{opacity:0;translate:0 5px}to{opacity:1;translate:0 0}}}
+.motion-off .fortune-letter{animation:none}
+
+.atelier-name{top:auto;bottom:9px;left:8px;max-width:103px;flex-wrap:wrap;display:grid;gap:0}
+.atelier-name input{min-height:29px;font-size:.76rem}
+.house-stage>canvas:focus-visible{outline:3px solid #fff3c7;outline-offset:-4px}
+@media(max-width:340px){.atelier-name{max-width:82px}.atelier-controls{margin-left:46px}}
+
+.home-play button,.home-play nav a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.home-play .furniture-strip [data-furnish]{touch-action:pan-x}
+.home-play .house-areas a,.home-play .house-areas button{min-height:42px}

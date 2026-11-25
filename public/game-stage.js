@@ -5,7 +5,7 @@ import {character} from './traveler-art.js';
 const town=[
   ['家',27,45,41,52,'#cottage','home'],['駅',79,44,62,50,'#pilot','route'],
   ['案内所',20,65,37,66,'#discover','compass'],['広場',79,67,64,66,'#home','heart'],
-  ['旅の店',20,82,39,79,'#shop','stamp'],['郵便',81,85,62,79,'#companions','send']
+  ['旅の店',20,82,39,79,'#shop','stamp'],['郵便',81,85,62,79,'#companions','send'],['占いの館',51,33,50,41,'#type','compass']
 ];
 const home=[
   ['本棚',20,29,33,40,'#my?view=list','book'],['ベッド',82,34,63,45,'sleep','home'],
@@ -56,7 +56,9 @@ export function mountStage(root,go,reduced){
     last=now;
     const goal=path[0], dx=goal.x-location.x, dy=goal.y-location.y;
     const distance=Math.hypot(dx,dy),step=.077*elapsed;
-    if(Math.abs(dx)>.75)canvas.dataset.direction=dx<0?'left':'right';
+    if(Math.abs(dy)>Math.abs(dx)*1.8)canvas.dataset.direction=dy<0?'north':'south';
+    else if(Math.abs(dx)>Math.abs(dy)*1.8)canvas.dataset.direction=dx<0?'west':'east';
+    else canvas.dataset.direction=(dy<0?'north':'south')+(dx<0?'west':'east');
     if(distance<=step){location=path.shift();place();}
     else{location={x:location.x+dx/distance*step,y:location.y+dy/distance*step};place();}
     if(path.length)animation=requestAnimationFrame(tick);else arrive();

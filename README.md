@@ -33,3 +33,5 @@ npm run dev
 - [スタンプ帳の全件一覧と出典](docs/stamp-catalog.md)
 - [おとも旅・ショップ・共有接続の設計](docs/companion-travel.md)
 - [Android・iOSの歩数と位置情報の設計](docs/native-travel.md)
+
+- [旅人の身支度・家と庭・占いの館の試遊ガイド](docs/atelier-preview.md)
