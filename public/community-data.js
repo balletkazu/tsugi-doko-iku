@@ -8,7 +8,7 @@ export const communityTabs = [
 
 export const reactionTypes = [
   // Keep the original three IDs stable for reactions saved in the first preview.
-  [3, 'いいね'], [0, 'ありがとう'], [1, '行ってみたい'], [2, '参考になった'], [4, '旅してきたよ']
+  [3, 'いいね'], [0, 'ありがとう'], [1, '行ってみたい'], [2, '参考になった'], [4, '旅してきたよ'], [5, 'すごい'], [6, '美味しそう']
 ];
 
 export const editorial = { id: 'editors', name: '編集部のサンプル' };
@@ -49,7 +49,7 @@ export const samplePosts = [
 ].map(post => ({...post, author:editorial, status:'sample', visibility:'public'}));
 
 export function feedPosts(posts, tab, profile = {}) {
-  return posts.filter(post => post.status === 'sample' && post.visibility === 'public' && (
+  return posts.filter(post => !profile.sampleMuted && !profile.sampleBlocked && post.status === 'sample' && post.visibility === 'public' && (
     tab === 'all' ||
     (tab === 'following' ? (profile.sampleFollows ?? []).includes(post.author.id) : post.kind === tab)
   ));

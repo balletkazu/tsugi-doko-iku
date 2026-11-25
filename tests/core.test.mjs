@@ -88,7 +88,7 @@ test('community feeds show finite public samples and honor locally followed edit
   assert.equal(new Map(reactionTypes).get(0),'ありがとう');
   assert.equal(new Map(reactionTypes).get(1),'行ってみたい');
   assert.equal(new Map(reactionTypes).get(2),'参考になった');
-  assert.equal(new Map(reactionTypes).size,5);
+  assert.equal(new Map(reactionTypes).size,7);
 });
 
 test('real photos have attributable local assets and user photos require public consent and review', () => {
@@ -198,4 +198,52 @@ test('walking cap includes access, transfer and egress at the exact second', () 
   schedule.journeys[1][2]++;
   schedule.services[0][3]['20261125']=2;
   assert.deepEqual(searchRegion({schedule,walking},{...trip,limit:60}),[]);
+});
+
+test('47 atlas destinations are stable, and virtual exploration cannot award real souvenirs',async()=>{
+  const {prefectures,inventory,newEntry,avatarDefaults}=await import('../public/world-data.js');
+  assert.deepEqual(prefectures.map(p=>p.id),collections[0].items.map(p=>p.id));
+  assert.ok(prefectures.every(p=>p.lat>=24 && p.lat<=46 && p.lon>=122 && p.lon<=147));
+  assert.deepEqual(inventory({explored:['JP-26']}),['plant','books']);
+  const entry=newEntry({activity:'cafe',pref:'JP-16',place:'喫茶店',id:'test',date:0,avatar:avatarDefaults});
+  assert.deepEqual(inventory({entries:[entry,entry]}),['plant','books','cup']);
+  assert.equal(entry.source,'self-confirmed');assert.throws(()=>newEntry({activity:'invented'}));
+  assert.throws(()=>newEntry({activity:'cafe',pref:'JP-48'}));
+});
+
+test('uncertain sensor readings preserve the choice and raw coordinates never enter records',async()=>{
+  const {estimateActivity,newEntry}=await import('../public/world-data.js');
+  const good={accuracy:6,speed:1.2,lat:36.7,lon:137.2,time:5000,alt:100,altError:3};
+  assert.equal(estimateActivity(null,good).kind,'walk');
+  for(const state of [{accuracy:91},{speed:60},{speed:null},{speed:0}])assert.equal(estimateActivity(null,{...good,...state}).kind,null);
+  const next={...good,time:15000,alt:111};assert.equal(estimateActivity(good,next).kind,'hike');
+  assert.equal(estimateActivity({...good,altError:80},next).kind,'walk');
+  const record=newEntry({...good,activity:'train',date:0,id:'test'});
+  for(const key of ['lat','lon','speed','time','alt','accuracy','altError'])assert.ok(!(key in record));
+});
+
+test('avatar options validate persisted values while preserving the chosen name',async()=>{
+  const {avatarFrom,parts,poses}=await import('../public/world-data.js');
+  const avatar=avatarFrom({name:' はる ',hat:2,eyes:88,hairColor:-2,bag:'wrong'});
+  assert.equal(avatar.name,'はる');assert.equal(avatar.hat,2);assert.equal(avatar.eyes,0);
+  for(const [key,options] of Object.entries(parts))assert.ok(avatar[key]>=0&&avatar[key]<options.length-1);
+  assert.equal(Object.keys(poses).length,12);
+});
+
+test('mapped Toyama journeys use measured shapes and preserve walks without geometry as endpoints',async()=>{
+  const {geometryForLeg}=await import('../public/transit-pilot.js');
+  const data=await loadToyamaPilot();
+  assert.equal(data.schedule.journeys.filter(j=>Number.isInteger(j[3])).length,765);
+  const request={from:'maidohaya/31_01',to:'chitetsu-tram/3003-C39_01',date:'2026-11-25',time:'10:00',limit:17,mixed:true};
+  const route=searchRegion(data,request)[0];assert.ok(route.walk<=17*60);
+  const lines=route.legs.flatMap(leg=>geometryForLeg(data,leg));
+  assert.deepEqual(lines.map(l=>l.mode),['bus','walk','tram']);assert.ok(lines.every(l=>l.coords.length>2));
+  assert.deepEqual(geometryForLeg({...data,footpaths:{}},route.legs[1]).map(l=>l.mode),['point','point']);
+  assert.deepEqual(searchRegion(data,{...request,limit:-1}),[]);assert.deepEqual(searchRegion(data,{...request,limit:181}),[]);
+});
+
+test('sample author controls affect the finite timeline without altering public posting permissions',()=>{
+  assert.deepEqual(feedPosts(samplePosts,'all',{sampleMuted:true}),[]);
+  assert.deepEqual(feedPosts(samplePosts,'all',{sampleBlocked:true}),[]);
+  assert.equal(new Map(reactionTypes).get(6),'美味しそう');
 });

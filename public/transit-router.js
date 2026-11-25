@@ -29,12 +29,12 @@ function departureInstances(schedule,date,start,end) {
       const exception = exceptions[day.key];
       return exception ? exception===1 : day.key>=from && day.key<=to && week[day.weekday]===1;
     });
-    for (const [patternId, service, firstArrival] of schedule.journeys) {
+    for (const [patternId, service, firstArrival, alignment] of schedule.journeys) {
       if (!available[service]) continue;
       const pattern = schedule.patterns[patternId];
       const base = firstArrival+day.offset;
       if (base>end || base+pattern.at(-2)<start) continue;
-      all.push({pattern,base});
+      all.push({pattern,base,alignment});
     }
   }
   return all;
@@ -67,7 +67,7 @@ function walkOptions(stops, matrix, current, maxWalk, until, previousRides) {
 
 function rideOptions(schedule,instances,ready,until,previousRides) {
   const next = Array.from({length:schedule.points.length},()=>[]);
-  for (const {pattern,base} of instances) {
+  for (const {pattern,base,alignment} of instances) {
     const route = pattern[0];
     const kind = modes[schedule.routes[route][2]];
     if (!kind) continue;
@@ -80,7 +80,7 @@ function rideOptions(schedule,instances,ready,until,previousRides) {
         for (const ride of boarded) {
           if (!ride || ride.stop===stop || time<=ride.departure) continue;
           keepLabel(next[stop],{stop,time,walk:ride.before.walk,mask:ride.mask,
-            legs:[...ride.before.legs,{mode:'ride',route,from:ride.stop,to:stop,start:ride.departure,end:time}]});
+            legs:[...ride.before.legs,{mode:'ride',route,from:ride.stop,to:stop,start:ride.departure,end:time,alignment,firstCall:ride.call,lastCall:(i-1)/4}]});
         }
       }
       if (!(flags&1)) continue;
@@ -88,7 +88,7 @@ function rideOptions(schedule,instances,ready,until,previousRides) {
       for (const before of ready[stop]) {
         if (before.time+(previousRides ? transferBuffer : 0)>departure) continue;
         const mask = before.mask|kind;
-        if (!boarded[mask] || before.walk<boarded[mask].before.walk) boarded[mask]={stop,before,departure,mask};
+        if (!boarded[mask] || before.walk<boarded[mask].before.walk) boarded[mask]={stop,before,departure,mask,call:(i-1)/4};
       }
     }
   }
@@ -124,7 +124,7 @@ function summarize(candidates,mixed) {
 export function searchRegion({schedule,walking}, {from,to,date,time,limit,mixed=false}) {
   const origin = schedule.points.findIndex(([id])=>id===from);
   const target = schedule.points.findIndex(([id])=>id===to);
-  if (origin<0 || target<0 || origin===target || ![30,60,120].includes(limit) || !isScheduleDate(schedule,date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return [];
+  if (origin<0 || target<0 || origin===target || (!Number.isInteger(limit) || limit<0 || limit>180) || !isScheduleDate(schedule,date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return [];
   const [hours,minutes] = time.split(':').map(Number);
   const start=hours*3600+minutes*60, until=start+searchWindow, maxWalk=limit*60;
   const instances = departureInstances(schedule,date,start,until);

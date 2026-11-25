@@ -12,13 +12,19 @@ import { mailbox, medalPage, milestones, playRoomSound, roomMotion, roomScreen, 
 import { questions, quizPage, travelerRanking } from './traveler-quiz.js';
 import { loadToyamaPilot, pilotPage } from './transit-pilot.js';
 
+import { createWorld } from './world.js';
+import { mountRouteMaps } from './transit-pilot.js';
+
 const view = document.querySelector('#view');
 const nav = document.querySelector('#nav');
 const notice = document.querySelector('#notice');
 let lastScreen;
 let pilot, pilotLoading, pilotRequest;
 const gallery = createGallery(view,{go,notify:toast});
-const tabs = [['home','ホーム','home'],['discover','旅を発見','compass'],['route','行き方','route'],['my','私の旅','book']];
+const world = createWorld(view,{go,notify:toast,profile:()=>state.profile,onRecords:records=>{state.data=records;}});
+let closeRouteMaps=()=>{};
+const worldPages = new Set(['village','welcome','avatar','cottage','decorate','atlas','trail','activity','memories','menu']);
+const tabs = [['village','街','home'],['atlas','地図','compass'],['cottage','自分の家','book'],['menu','メニュー','route']];
 const state = { profile:{}, data:{trips:[], journals:[]}, nearby:null, route:null };
 let toastTimer;
 let pending = false;
@@ -32,7 +38,7 @@ function toast(message) {
 }
 
 function currentLocation() {
-  const [path, search] = (location.hash.slice(1) || 'home').split(/\?(.*)/s, 2);
+  const [path, search] = (location.hash.slice(1) || 'village').split(/\?(.*)/s, 2);
   const [screen, id, edit] = path.split('/');
   return { screen, id, edit, params:new URLSearchParams(search) };
 }
@@ -44,8 +50,8 @@ const back = (url, label) => `<p class="no-print">${link(url,label,'back','text-
 const placeLabel = place => `${place.name} ${place.region}`;
 
 function setNav(screen) {
-  const parents = {place:'discover',story:'home','opening-photo':'home',nearby:'route',pilot:'route',saved:'my',trip:'my',journal:'my',stamps:'my',type:'my',medals:'my',mail:'my',photos:'my','room-settings':'my',about:'home'};
-  const parent = Object.hasOwn(parents,screen) ? parents[screen] : screen;
+  const groups={welcome:'village',avatar:'cottage',decorate:'cottage',trail:'atlas',activity:'village',memories:'cottage',home:'village',story:'village'};
+  const parent=groups[screen]??(tabs.some(([id])=>id===screen)?screen:'menu');
   nav.innerHTML = tabs.map(([id,label,glyph])=>`<a href="#${id}" class="nav-link" ${parent === id ? 'aria-current="page"' : ''}>${icon(glyph)}<span>${label}</span></a>`).join('');
 }
 
@@ -54,7 +60,7 @@ function discover(params) {
   const query = (params.get('q') ?? '').slice(0,70);
   const manual = travelerTypes.find(item=>item.name === state.profile.traveler);
   const savedThemes = state.profile.quizSaved ? places.filter(place=>isSaved(place.id)).map(place=>place.theme) : [];
-  const ranking = state.profile.quiz ? travelerRanking(state.profile.quiz,savedThemes).slice(0,2) : [];
+  const ranking = state.profile.quiz ? travelerRanking(state.profile.quiz,[...savedThemes,...(state.profile.quizActivity?world.themes():[])]).slice(0,2) : [];
   const preferred = manual?.themes ?? ranking.flatMap(type=>type.themes);
   const list = rankPlaces(places,theme,query,preferred);
   return page('旅を発見','水辺、島、山。気になる風景から次の旅を探す。',`<form id="discover-search" class="search" data-theme="${e(theme)}"><label>地名やキーワード<input name="q" type="search" maxlength="70" value="${e(query)}" placeholder="例：秋田、渓谷"></label><button class="button">検索する</button></form>${chips(['すべて',...themes],theme || 'すべて',label=>discoverUrl(label === 'すべて' ? '' : label,query))}<p class="muted">${list.length}件の旅先</p><div class="results">${list.length ? placeCards(list) : empty('該当する旅先がありません','別のキーワードやテーマをお試しください。')}</div>`,{eyebrow:'Discover'});
@@ -110,8 +116,9 @@ function recordList(items,type,placeholder) {
 function stamps(id) {
   const collection = collections.find(item=>item.id === id) ?? collections[0];
   const marked = state.profile.stamps ?? {};
-  const count = collection.items.filter(item=>marked[stampKey(collection,item)]).length;
-  return page('旅のスタンプ帳','訪れた場所を選んで、旅の足あとを残す。',`${chips(collections.map(item=>item.name),collection.name,label=>`#stamps/${collections.find(item=>item.name===label).id}`)}<section class="surface flow"><h2>${collection.name}</h2><p class="muted">${count} / ${collection.items.length} ${collection.complete ? '訪問済み' : '訪問済み（掲載している一部の場所）'}</p><div class="stamp-grid">${collection.items.map(item=>{const key=stampKey(collection,item);return `<button type="button" class="stamp" data-action="stamp" data-id="${key}" aria-pressed="${Boolean(marked[key])}">${item.name}</button>`;}).join('')}</div></section>`,{eyebrow:'Travel stamps'});
+  const confirmed = collection.id==='prefecture'?world.visited():new Set();
+  const count = collection.items.filter(item=>confirmed.has(item.id)||marked[stampKey(collection,item)]).length;
+  return page('旅のスタンプ帳','訪れた場所を選んで、旅の足あとを残す。',`${chips(collections.map(item=>item.name),collection.name,label=>`#stamps/${collections.find(item=>item.name===label).id}`)}<section class="surface flow"><h2>${collection.name}</h2><p class="muted">${count} / ${collection.items.length} ${collection.complete ? '訪問済み' : '訪問済み（掲載している一部の場所）'}</p><div class="stamp-grid">${collection.items.map(item=>{const key=stampKey(collection,item);if(confirmed.has(item.id))return `<a class="stamp" aria-label="${item.name}・体験から記録済み" href="#memories">${item.name} ✓</a>`;return `<button type="button" class="stamp" data-action="stamp" data-id="${key}" aria-pressed="${Boolean(marked[key])}">${item.name}</button>`;}).join('')}</div></section>`,{eyebrow:'Travel stamps'});
 }
 
 function about() {
@@ -124,6 +131,8 @@ function missing() {
 
 function render({ navigate = false } = {}) {
   const {screen,id,edit,params} = currentLocation();
+  world.release();
+  closeRouteMaps();
   revokePhotos();
   gallery.release();
   document.documentElement.classList.toggle('motion-off',state.profile.effects?.motion === false);
@@ -132,7 +141,7 @@ function render({ navigate = false } = {}) {
     home:()=>communityHome(params,state.profile), discover:()=>discover(params), place:()=>placeDetail(id), story:()=>storyDetail(id,params), route:()=>route(params), nearby:()=>nearby(params),
     my:()=>myTravel(params), trip:()=>recordScreen('trip',id,edit,state.data), journal:()=>recordScreen('journal',id,edit,state.data), stamps:()=>stamps(id), about,
     saved:()=>savedPage(params), 'opening-photo':openingPhotoPage,
-    photos:()=>gallery.screen(id,edit), type:()=>quizPage(state.profile,places),
+    photos:()=>gallery.screen(id,edit), type:()=>quizPage(state.profile,places,state.profile.quizActivity?world.themes():[]),
     medals:()=>medalPage(state.profile,state.data), mail:()=>mailbox(state.profile,state.data),
     'room-settings':()=>roomSettings(state.profile), pilot:()=>pilotPage(pilot,pilotRequest)
   };
@@ -142,7 +151,9 @@ function render({ navigate = false } = {}) {
     });
   }
   setNav(screen);
-  view.innerHTML = (Object.hasOwn(screens,screen) ? screens[screen] : missing)();
+  view.innerHTML = worldPages.has(screen) ? world.screen(screen,id,params) : (Object.hasOwn(screens,screen) ? screens[screen] : missing)();
+  if(worldPages.has(screen)) world.hydrate(screen,params);
+  if(screen==='pilot') closeRouteMaps=mountRouteMaps(view,pilot);
   renderPhotos(view,state.data);
   if (navigate && turningStamps) roomMotion(state.profile,view.querySelector('.stamp-grid'),'page');
   const title = view.querySelector('h1');
@@ -243,7 +254,7 @@ view.addEventListener('click', event => {
   } else if (action === 'reset-quiz') {
     write(async()=>{
       state.profile = await update('profile',(profile = {})=>{
-        const {quiz,quizSaved,...next} = profile;
+        const {quiz,quizSaved,quizActivity,...next} = profile;
         return next;
       });
       refreshControl(button);
@@ -289,6 +300,9 @@ view.addEventListener('click', event => {
       refreshControl(button);
       toast(state.profile.savedPosts.includes(id) ? '投稿を保存しました。' : '投稿の保存を取り消しました。');
     },button);
+  } else if (action==='sample-safety' && ['mute','block'].includes(value)) {
+    const key=value==='mute'?'sampleMuted':'sampleBlocked';
+    write(async()=>{state.profile=await update('profile',(profile={})=>({...profile,[key]:!profile[key]}));refreshControl(button);toast('サンプル投稿の表示設定を保存しました。');},button);
   } else if (action === 'follow-sample' && id === editorial.id) {
     write(async()=>{
       state.profile = await update('profile',(profile = {})=>{
@@ -329,7 +343,7 @@ view.addEventListener('click', event => {
       go('#my');
       toast('記録を削除しました。');
     },button);
-  } else if (action === 'clear' && confirm('このブラウザーの栞、日記、写真、保存、スタンプをすべて消去しますか？')) {
+  } else if (action === 'clear' && confirm('このブラウザーの旅人、自宅、絵日記、写真、栞、スタンプなど、すべての記録を消去しますか？')) {
     write(async()=>{
       await clear();
       state.profile = {};
@@ -338,7 +352,8 @@ view.addEventListener('click', event => {
       state.nearby = null;
       pilotRequest = undefined;
       gallery.reset();
-      go('#home');
+      world.load({});
+      go('#village');
       toast('この端末のアプリ記録を消去しました。');
     },button);
   }
@@ -351,7 +366,7 @@ view.addEventListener('submit', event => {
   if (form.id === 'community-search') {
     go(homeUrl(form.dataset.feed,fields.get('q').trim()));
   } else if (form.id === 'pilot-form' && pilot) {
-    pilotRequest = {from:fields.get('from'),to:fields.get('to'),date:fields.get('date'),time:fields.get('time'),limit:Number(fields.get('limit')),mixed:fields.has('mixed')};
+    pilotRequest = {from:fields.get('from'),to:fields.get('to'),date:fields.get('date'),time:fields.get('time'),limit:Number(fields.get('limit')),order:fields.get('order'),mixed:fields.has('mixed')};
     render();
     document.querySelector('#pilot-results')?.focus();
   } else if (form.id === 'effects-form') {
@@ -364,7 +379,7 @@ view.addEventListener('submit', event => {
     const answers = questions.map((_,index)=>fields.get('q'+index));
     if (!answers.every((answer,index)=>questions[index][1].some(([name])=>name===answer))) return;
     write(async()=>{
-      state.profile = await update('profile',(profile = {})=>({...profile,quiz:answers,quizSaved:fields.has('saved')}));
+      state.profile = await update('profile',(profile = {})=>({...profile,quiz:answers,quizSaved:fields.has('saved'),quizActivity:fields.has('activity')}));
       render();
       const result = view.querySelector('.quiz-results');
       if (result) { result.tabIndex=-1; result.focus(); }
@@ -425,7 +440,8 @@ window.addEventListener('hashchange',()=>render({navigate:true}));
 view.innerHTML = '<p class="loading" role="status">旅のページを開いています。</p>';
 showFirstOpening(()=>go('#opening-photo'));
 try {
-  const [profile,data] = await Promise.all([read('profile'),read('records'),gallery.load()]);
+  const [profile,data,worldState] = await Promise.all([read('profile'),read('records'),read('world'),gallery.load()]);
+  world.load(worldState);
   state.profile = profile ?? {};
   state.data = data ?? state.data;
 } catch {

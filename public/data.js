@@ -22,6 +22,9 @@ export const travelerTypes = [
 const prefectures = '北海道 青森県 岩手県 宮城県 秋田県 山形県 福島県 茨城県 栃木県 群馬県 埼玉県 千葉県 東京都 神奈川県 新潟県 富山県 石川県 福井県 山梨県 長野県 岐阜県 静岡県 愛知県 三重県 滋賀県 京都府 大阪府 兵庫県 奈良県 和歌山県 鳥取県 島根県 岡山県 広島県 山口県 徳島県 香川県 愛媛県 高知県 福岡県 佐賀県 長崎県 熊本県 大分県 宮崎県 鹿児島県 沖縄県'.split(' ');
 export const collections = [
   { id:'prefecture', name:'都道府県', complete:true, items:prefectures.map((name,index)=>({id:`JP-${String(index+1).padStart(2,'0')}`, name})) },
+  { id:'biosphere',name:'ユネスコエコパーク',items:[{id:'tadami',name:'只見'},{id:'aya',name:'綾'},{id:'hakusan',name:'白山'}] },
+  { id:'temple',name:'神社仏閣',items:[{id:'heisenji',name:'平泉寺白山神社'}] },
+  { id:'onsen',name:'温泉',items:[{id:'nyuto',name:'乳頭温泉郷'}] },
   { id:'national-park', name:'国立公園', items:[{id:'nikko', name:'日光国立公園'},{id:'fuji-hakone-izu', name:'富士箱根伊豆国立公園'},{id:'setonaikai',name:'瀬戸内海国立公園'}] },
   { id:'world-heritage', name:'世界遺産', items:[{id:'yakushima',name:'屋久島'},{id:'shirakawago',name:'白川郷・五箇山の合掌造り集落'},{id:'himeji',name:'姫路城'}] },
   { id:'mountain-100', name:'日本百名山', items:[{id:'fuji',name:'富士山'},{id:'chokai',name:'鳥海山'},{id:'tsukuba',name:'筑波山'}] },

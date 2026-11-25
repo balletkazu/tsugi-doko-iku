@@ -23,6 +23,11 @@ function followButton(profile) {
   return `<button type="button" class="button button-outline" data-action="follow-sample" data-id="${editorial.id}" aria-pressed="${following}">${following ? 'サンプルのフォローを解除' : '編集部のサンプルをフォロー'}</button>`;
 }
 
+function safetyControls(profile) {
+  return `<details class="surface"><summary>サンプル投稿の表示設定</summary><div class="flow"><p>この端末での表示を選べます。ミュートすると広場から隠れ、ブロックすると詳細や保存一覧からも隠れます。</p><div class="actions">
+    ${[['mute','ミュート',profile.sampleMuted],['block','ブロック',profile.sampleBlocked]].map(([key,label,active])=>`<button type="button" class="chip" data-action="sample-safety" data-value="${key}" aria-pressed="${!!active}">${label}${active?'を解除':'する'}</button>`).join('')}</div></div></details>`;
+}
+
 function tags(post) {
   return `<ul class="post-tags" aria-label="タグ">${post.tags.map(tag=>`<li><a href="${e(homeUrl('all',`#${tag}`))}">#${e(tag)}</a></li>`).join('')}</ul>`;
 }
@@ -73,12 +78,14 @@ export function communityHome(params, profile) {
       ${query ? link(homeUrl(tab),'検索をクリア',null,'text-link') : link('#opening-photo','ここは、どこ？',null,'text-link')}
     </div>
     ${cards}
+    ${safetyControls(profile)}
   </section><div class="home-tools">${link('#photos','投稿の下書き','edit','text-link')}${link('#discover','旅先を探す','compass','text-link')}${link('#nearby','寄り道を探す','pin','text-link')}${link('#stamps','旅のスタンプ帳','stamp','text-link')}</div>`;
 }
 
 export function communityDetail(post, from, profile) {
   const photo = photoFor(post.photoId);
   const returnTo = from === 'saved' ? '#saved?view=posts' : homeUrl(Object.hasOwn(labels, from) ? from : 'all');
+  if(profile.sampleBlocked)return `<section class="page flow"><h1>ブロック中のサンプル</h1>${safetyControls(profile)}${link('#home','広場へ','back')}</section>`;
   const reactions = profile.reactions?.[post.id] ?? [];
   return `<div class="page page-narrow reading">
     <p>${link(returnTo,from === 'saved' ? '保存した投稿へ' : '投稿一覧へ','back','text-link')}</p>
@@ -102,12 +109,13 @@ export function communityDetail(post, from, profile) {
         <p class="muted">試遊の反応はこの端末に保存されます。</p>
         <div class="actions">${reactionTypes.map(([id,label])=>`<button class="chip" type="button" data-action="reaction" data-id="${post.id}" data-value="${id}" aria-pressed="${reactions.includes(id)}">${label}</button>`).join('')}</div>
         ${followButton(profile)}
+        ${safetyControls(profile)}
       </section>
     </div>
   </div>`;
 }
 
 export function communitySaved(profile) {
-  const posts = samplePosts.filter(post => (profile.savedPosts ?? []).includes(post.id));
+  const posts = samplePosts.filter(post => !profile.sampleBlocked && (profile.savedPosts ?? []).includes(post.id));
   return posts.length ? communityCards(posts,profile,'saved') : empty('保存した投稿がありません','投稿のハートから、この端末に保存できます。');
 }

@@ -25,11 +25,11 @@ export function travelerRanking(answers, savedThemeNames = []) {
   return travelerTypes.map(type=>({...type,score:score.get(type.name)})).sort((a,b)=>b.score-a.score);
 }
 
-export function quizPage(profile, places) {
+export function quizPage(profile, places,activityThemes=[]) {
   const answers = profile.quiz ?? [];
   const consent = profile.quizSaved === true;
   const themes = consent ? places.filter(place=>(profile.saved ?? []).includes(place.id)).map(place=>place.theme) : [];
-  const ranking = travelerRanking(answers,themes);
+  const ranking = travelerRanking(answers,[...themes,...(profile.quizActivity?activityThemes:[])]);
   const results = answers.length === questions.length ? `<section class="surface flow quiz-results"><h2>鏡に映った旅のかたち</h2>
     ${ranking.slice(0,2).map((type,index)=>`<div class="quiz-type"><small>${index===0?'いまのあなた':'もうひとつの一面'}</small><h3>${type.name}</h3><p>${type.description}</p></div>`).join('')}
     <p>次に試すなら、${ranking[2].description}。</p>${link('#discover','旅先を探す','arrow','button button-outline')}</section>` : '';
@@ -38,6 +38,7 @@ export function quizPage(profile, places) {
     ${questions.map(([question,choices],index)=>`<fieldset><legend>${e(question)}</legend><div class="options quiz-choices">
       ${choices.map(([type,label])=>`<label class="option"><input type="radio" name="q${index}" value="${type}" ${answers[index]===type?'checked':''} required><span class="chip">${e(label)}</span></label>`).join('')}</div></fieldset>`).join('')}
     <label class="check-row"><input type="checkbox" name="saved" ${consent?'checked':''}>保存した旅先のテーマも使う</label>
-    <p class="muted">回答と、許可した場合の保存先のテーマだけをこの端末で使います。日記、写真、位置情報は使いません。</p>
+    <label class="check-row"><input type="checkbox" name="activity" ${profile.quizActivity?'checked':''}>自分で記録した体験の種類も使う</label>
+    <p class="muted">この端末で、回答と許可した項目を点数に換算します。日記の文章、写真、位置情報は読みません。</p>
     <div class="actions"><button class="button">診断して保存</button>${answers.length ? '<button class="button button-outline" type="button" data-action="reset-quiz">診断を消去</button>' : ''}${link('#my','旅の部屋へ','back','text-link')}</div></form></div>`,{narrow:true});
 }

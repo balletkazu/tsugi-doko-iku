@@ -6,7 +6,7 @@ export function openingPhotoPage() {
   const photo = photoFor(homeFeature);
   return page('ここは、どこ？','九十九島を望む、長崎県佐世保市の展海峰。',`<div class="flow">
     ${photoFigure(photo)}
-    <div class="actions">${link('#home','ホームへ','back','button button-outline')}
+    <div class="actions">${link('#village','街へ','back','button button-outline')}
       <button class="button button-outline" type="button" data-action="replay-opening">もう一度、風景を見る</button></div>
   </div>`,{narrow:true});
 }
@@ -36,7 +36,7 @@ export function showOpening(onDetails) {
 }
 
 export function showFirstOpening(onDetails) {
-  if (location.hash && location.hash !== '#home') return;
+  if (location.hash && !['#village','#home','#welcome'].includes(location.hash)) return;
   try {
     const key = 'tsugi-opening-seen';
     if (sessionStorage.getItem(key)) return;

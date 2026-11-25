@@ -82,7 +82,32 @@ def simple_fares(archive):
     return {key:next(iter(values)) for key, values in by_route.items() if len(values) == 1 and key not in unsupported}
 
 
-def ingest(source, raw, stops, routes, services, patterns, journeys, bounds):
+def align_to_shape(line, points):
+    """Match calls in trip order, including the last stop of circular services."""
+    scale = math.cos(math.radians(points[0][0]))
+    previous = []
+    for lat, lon in points:
+        candidates = []
+        for i, ((a, b), (c, d)) in enumerate(zip(line, line[1:])):
+            dy, dx = c-a, (d-b)*scale
+            length = dx*dx + dy*dy
+            fraction = max(0, min(1, ((lat-a)*dy+(lon-b)*scale*dx)/length)) if length else 0
+            error = math.hypot(a+fraction*dy-lat,(b-lon)*scale+fraction*dx)*111200
+            offset = round(i+fraction, 4)
+            if error > 180:
+                continue
+            prior = [(cost, path) for cost, path in previous if path[-1] <= offset]
+            if previous and not prior:
+                continue
+            cost, path = min(prior, key=lambda pair:pair[0]) if prior else (0, [])
+            candidates.append((cost+error*error, [*path, offset]))
+        if not candidates:
+            return None
+        previous = candidates
+    return min(previous, key=lambda pair:pair[0])[1]
+
+
+def ingest(source, raw, stops, routes, services, patterns, journeys, bounds, geometry):
     require(source['license'] in ALLOWED_LICENSES, f'Feed license needs review: {source["id"]}')
     feed_id = source['id']
     with ZipFile(io.BytesIO(raw)) as archive:
@@ -132,6 +157,14 @@ def ingest(source, raw, stops, routes, services, patterns, journeys, bounds):
             require(all(x in ('0','1','2','3') for x in codes), 'Invalid pickup/drop-off type')
             flags = int(codes[0] == '0') + 2 * int(codes[1] == '0')
             stop_times[row['trip_id']].append((int(row['stop_sequence']), local_stops[row['stop_id']], seconds(row['arrival_time']), seconds(row['departure_time']), flags))
+        shape_rows = defaultdict(list)
+        for point in records(archive, 'shapes', required=False):
+            shape_rows[point['shape_id']].append((int(point['shape_pt_sequence']),round(float(point['shape_pt_lat']),6),round(float(point['shape_pt_lon']),6)))
+        shape_ids = {}
+        for key, rows in shape_rows.items():
+            shape_ids[key] = len(geometry['lines'])
+            geometry['lines'].append([row[1:] for row in sorted(rows)])
+        alignments = {}
         pattern_index = {}
         for trip_id, row in trips.items():
             require(row['service_id'] in local_services and row['route_id'] in local_routes, f'Bad trip foreign key: {trip_id}')
@@ -148,7 +181,18 @@ def ingest(source, raw, stops, routes, services, patterns, journeys, bounds):
             if pattern not in pattern_index:
                 pattern_index[pattern] = len(patterns)
                 patterns.append(pattern)
-            journeys.append([pattern_index[pattern], local_services[row['service_id']], base])
+            line_id = shape_ids.get(row.get('shape_id'))
+            alignment = None
+            if line_id is not None:
+                sequence = tuple(call[1] for call in calls)
+                key = (line_id,sequence)
+                if key not in alignments:
+                    positions = align_to_shape(geometry['lines'][line_id], [stops[n][3:] for n in sequence])
+                    alignments[key] = len(geometry['alignments']) if positions else None
+                    if positions:
+                        geometry['alignments'].append([line_id,positions])
+                alignment = alignments[key]
+            journeys.append([pattern_index[pattern], local_services[row['service_id']], base, alignment])
     return {'id':feed_id,'name':source['name'],'publisher':source['publisher'],'mode':source['mode'],
             'license':source['license'],'source':source['catalog'],'start':begin,'end':end,
             'version':info.get('feed_version',''),'sha256':hashlib.sha256(raw).hexdigest(), 'stops':len(local_stops),'trips':len(trips),
@@ -200,13 +244,14 @@ def generate(args):
     verified = datetime.strptime(args.as_of,'%Y-%m-%d').date()
     stops, routes, services, patterns, journeys = [], [], [], [], []
     feeds = []
+    geometry = {'lines':[], 'alignments':[]}
     for source in catalog['feeds']:
         path = args.inputs / f'{source["id"]}.zip'
         raw = download(source['download']) if args.download else path.read_bytes()
         if args.download:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(raw)
-        feeds.append(ingest(source, raw, stops, routes, services, patterns, journeys, bounds))
+        feeds.append(ingest(source, raw, stops, routes, services, patterns, journeys, bounds, geometry))
     for place in catalog['places']:
         require(bounds[0] <= place['lat'] <= bounds[2] and bounds[1] <= place['lon'] <= bounds[3], 'Unexpected regional point')
         stops.append([place['id'],place['name'],'place',place['lat'],place['lon']])
@@ -226,7 +271,8 @@ def generate(args):
     schedule = {'region':catalog['regionId'],'timezone':catalog['timezone'],'start':start,'end':end,
                 'verified':str(verified),'pointHash':point_hash,'feeds':feeds,'points':[point[:3] for point in stops],
                 'routes':routes,'services':services,'patterns':patterns,'journeys':journeys}
-    report = {'region':catalog['regionId'],'reviewedOn':str(verified),'commonFrom':start,'commonUntil':end,
+    geometry.update({'pointHash':point_hash,'stops':[point[3:] for point in stops]})
+    report = {'mappedTrips':sum(j[-1] is not None for j in journeys),'region':catalog['regionId'],'reviewedOn':str(verified),'commonFrom':start,'commonUntil':end,
               'feeds':feeds,'points':len(stops),'patterns':len(patterns),'trips':len(journeys),
               'walking':{'builtOn':foot['builtOn'],'maxSnapMeters':foot['maxSnapMeters'],'unreachablePairs':unavailable}}
     if args.compare:
@@ -249,6 +295,7 @@ def generate(args):
             temporary.replace(path)
         args.output_dir.mkdir(parents=True, exist_ok=True)
         write_js(args.output_dir/f'{slug}-schedule.js',schedule,'Approved GTFS snapshot. See docs/toyama-pilot.md for sources and licenses.')
+        write_js(args.output_dir/f'{slug}-geometry.js',geometry,'Actual GTFS route shapes and stop positions. Same sources as the regional schedule.')
         write_js(args.output_dir/f'{slug}-walking.js',foot,'© OpenStreetMap contributors (ODbL). FOSSGIS OSRM pedestrian routing snapshot.')
     return report
 
