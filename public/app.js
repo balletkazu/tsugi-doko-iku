@@ -84,7 +84,7 @@ function route(params) {
   const values = state.route ?? {};
   const to = params.has('to') ? params.get('to').slice(0,100) : values.to ?? '';
   const result = values.url && to === values.to ? `<section class="surface flow"><h2>入力した条件</h2><p><strong>${e(values.from)} → ${e(values.to)}</strong></p><p class="muted">希望：徒歩${values.walk}分まで・${e(values.priority)}を優先</p><div class="actions">${external(values.url,'Google マップで公共交通を調べる')}${link(findPlace(values.placeId) ? `#nearby?anchor=${values.placeId}` : '#nearby','寄り道候補を見る','pin','button button-outline')}</div><p class="muted">外部地図に渡すのは出発地と目的地です。選んだ徒歩上限と優先条件は、この画面で確認できます。</p></section>` : '';
-  return page('行き方','',`<div class="flow"><section class="surface flow"><h2>富山市の乗換案内</h2><p>実際のバス時刻表と徒歩データで、行き方を探せます。</p>${link('#pilot','富山市で検索する','route')}</section><p class="notice">その他の地域では入力した条件の確認と外部地図への案内を利用できます。</p><form id="route-form" class="surface flow"><div class="field-grid"><label>出発地<input required name="from" maxlength="100" value="${e(values.from)}" placeholder="例：秋田駅"></label><label>目的地<input required name="to" maxlength="100" value="${e(to)}" placeholder="例：元滝伏流水"></label></div><button class="button button-outline" type="button" data-action="swap">出発地と目的地を入れ替える</button><fieldset><legend>合計の徒歩上限（希望）</legend>${options('walk',walkingLimits,values.walk ?? 60,value=>value===30?'30分':`${value/60}時間`)}</fieldset><fieldset><legend>優先したいこと</legend>${options('priority',routePriorities,values.priority ?? routePriorities[0])}</fieldset><div class="actions"><button class="button">入力した条件を確認${icon('arrow')}</button>${link('#nearby','寄り道を探す','pin','button button-outline')}</div><p id="route-error" class="error" role="status" hidden></p></form>${result}</div>`,{narrow:true,eyebrow:'Plan your way'});
+  return page('行き方','',`<div class="flow"><section class="surface flow"><h2>富山市の乗換案内</h2><p>路面電車とバスの時刻表、徒歩データで行き方を探せます。</p>${link('#pilot','富山市で検索する','route')}</section><p class="notice">その他の地域では入力した条件の確認と外部地図への案内を利用できます。</p><form id="route-form" class="surface flow"><div class="field-grid"><label>出発地<input required name="from" maxlength="100" value="${e(values.from)}" placeholder="例：秋田駅"></label><label>目的地<input required name="to" maxlength="100" value="${e(to)}" placeholder="例：元滝伏流水"></label></div><button class="button button-outline" type="button" data-action="swap">出発地と目的地を入れ替える</button><fieldset><legend>合計の徒歩上限（希望）</legend>${options('walk',walkingLimits,values.walk ?? 60,value=>value===30?'30分':`${value/60}時間`)}</fieldset><fieldset><legend>優先したいこと</legend>${options('priority',routePriorities,values.priority ?? routePriorities[0])}</fieldset><div class="actions"><button class="button">入力した条件を確認${icon('arrow')}</button>${link('#nearby','寄り道を探す','pin','button button-outline')}</div><p id="route-error" class="error" role="status" hidden></p></form>${result}</div>`,{narrow:true,eyebrow:'Plan your way'});
 }
 
 function nearby(params) {
@@ -351,7 +351,7 @@ view.addEventListener('submit', event => {
   if (form.id === 'community-search') {
     go(homeUrl(form.dataset.feed,fields.get('q').trim()));
   } else if (form.id === 'pilot-form' && pilot) {
-    pilotRequest = {from:fields.get('from'),to:fields.get('to'),date:fields.get('date'),time:fields.get('time'),limit:Number(fields.get('limit'))};
+    pilotRequest = {from:fields.get('from'),to:fields.get('to'),date:fields.get('date'),time:fields.get('time'),limit:Number(fields.get('limit')),mixed:fields.has('mixed')};
     render();
     document.querySelector('#pilot-results')?.focus();
   } else if (form.id === 'effects-form') {

@@ -16,8 +16,10 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const { request } = event;
   if (request.method !== 'GET') return;
-  const home = new URL('./', self.location).href;
-  if (request.mode === 'navigate' && (request.url === home || request.url === `${home}index.html`)) {
+  const url = new URL(request.url);
+  const home = new URL('./', self.location);
+  const indexPath = new URL('index.html', home).pathname;
+  if (request.mode === 'navigate' && url.origin === home.origin && (url.pathname === home.pathname || url.pathname === indexPath)) {
     event.respondWith(caches.open(cacheName).then(async cache => (await cache.match('./index.html')) ?? fetch(request)));
   } else if (allowed.has(request.url)) {
     event.respondWith(caches.open(cacheName).then(async cache => (await cache.match(request)) ?? fetch(request)));

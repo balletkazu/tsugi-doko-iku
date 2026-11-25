@@ -11,7 +11,8 @@ import { canFeaturePhoto, photoFor } from '../public/photos.js';
 import { travelerRanking } from '../public/traveler-quiz.js';
 import { movePhoto } from '../public/gallery.js';
 import { jpegTechnicalExif } from '../public/gallery-media.js';
-import { loadToyamaPilot, searchToyama } from '../public/transit-pilot.js';
+import { loadToyamaPilot } from '../public/transit-pilot.js';
+import { searchRegion } from '../public/transit-router.js';
 
 test('search combines region, phrase and theme, retaining preferred themes first', () => {
   assert.deepEqual(rankPlaces(places,'自然',' 秋田 ').map(place=>place.id),['mototaki','hachibodai']);
@@ -144,18 +145,57 @@ test('JPEG EXIF reads allowed camera data and ignores a GPS directory tag', () =
   assert.deepEqual(jpegTechnicalExif(image.subarray(0,50)),{});
 });
 
-test('real Toyama bus and walking candidates respect all three caps and the published service dates', async () => {
+test('Toyama combines published bus and tram departures through a pedestrian transfer', async () => {
   const data = await loadToyamaPilot();
-  const trip = {from:'1_01',to:'28_01',date:'2026-11-25',time:'10:00'};
-  const short = searchToyama(data,{...trip,limit:30});
-  assert.equal(short.length,2);
-  assert.ok(short.every(route=>route.type==='bus' && route.fare===200 && route.walk<=1800));
-  const middle = searchToyama(data,{...trip,limit:60});
-  assert.ok(middle.some(route=>route.type==='walk' && route.walk>1800 && route.walk<=3600));
+  const trip = {from:'maidohaya/31_01',to:'chitetsu-tram/3003-C39_01',date:'2026-11-25',time:'10:00',limit:30,mixed:true};
+  const routes = searchRegion(data,trip);
+  assert.ok(routes.length && routes.every(route=>route.mask===3 && route.walk<=1800));
+  const [bus,transfer,tram] = routes[0].legs;
+  assert.equal(data.schedule.routes[bus.route][2],'bus');
+  assert.equal(data.schedule.points[bus.to][1],'宝町');
+  assert.equal(transfer.mode,'walk');
+  assert.equal(data.schedule.points[transfer.to][1],'富山駅');
+  assert.equal(tram.start,10*3600+30*60);
+  assert.equal(data.schedule.routes[tram.route][2],'tram');
+  assert.equal(data.schedule.points[tram.to][1],'岩瀬浜');
+  assert.equal(tram.end,10*3600+54*60);
+  assert.equal(routes[0].fare,null); // The tram feed does not publish a fare table.
+});
+
+test('real Toyama candidates respect all three caps and the common service dates', async () => {
+  const data = await loadToyamaPilot();
+  const trip = {from:'maidohaya/1_01',to:'maidohaya/28_01',date:'2026-11-25',time:'10:00'};
+  const short = searchRegion(data,{...trip,limit:30});
+  assert.ok(short.length && short.every(route=>route.mask!==0 && route.walk<=1800));
+  const middle = searchRegion(data,{...trip,limit:60});
+  assert.ok(middle.some(route=>route.mask===0 && route.walk>1800 && route.walk<=3600));
   const far = {...trip,to:'poi-zoo'};
-  assert.deepEqual(searchToyama(data,{...far,limit:60}),[]);
-  assert.ok(searchToyama(data,{...far,limit:120}).some(route=>route.walk>3600 && route.walk<=7200));
-  assert.deepEqual(searchToyama(data,{...trip,date:'2027-04-01',limit:120}),[]);
-  assert.deepEqual(searchToyama(data,{...trip,date:'2027-02-31',limit:120}),[]);
-  assert.deepEqual(searchToyama(data,{...trip,from:'unknown',limit:60}),[]);
+  assert.deepEqual(searchRegion(data,{...far,limit:60}),[]);
+  assert.ok(searchRegion(data,{...far,limit:120}).some(route=>route.walk>3600 && route.walk<=7200));
+  assert.deepEqual(searchRegion(data,{...trip,date:'2027-03-14',limit:120}),[]);
+  assert.deepEqual(searchRegion(data,{...trip,date:'2027-02-31',limit:120}),[]);
+  assert.deepEqual(searchRegion(data,{...trip,from:'unknown',limit:60}),[]);
+});
+
+test('walking cap includes access, transfer and egress at the exact second', () => {
+  const schedule = {
+    start:'20260101',end:'20271231',
+    points:[['a','Origin','place'],['b','Bus board','bus'],['c','Bus alight','bus'],['d','Tram board','tram'],['e','Tram alight','tram'],['f','Target','place']],
+    services:[['20260101','20271231',[1,1,1,1,1,1,1],{}]],
+    routes:[['bus','Bus','bus',200],['tram','Tram','tram',null]],
+    patterns:[[0,1,0,0,1,2,600,600,2],[1,3,0,0,1,4,480,480,2]],
+    journeys:[[0,0,36600],[1,0,37920]]
+  };
+  const walking = Array.from({length:6},(_,i)=>Array.from({length:6},(_,j)=>i===j?0:null));
+  walking[0][1]=600; walking[2][3]=600; walking[4][5]=600;
+  const trip = {from:'a',to:'f',date:'2026-11-25',time:'10:00',limit:30,mixed:true};
+  assert.equal(searchRegion({schedule,walking},trip)[0].walk,1800);
+  walking[4][5]=601;
+  assert.deepEqual(searchRegion({schedule,walking},trip),[]);
+  assert.equal(searchRegion({schedule,walking},{...trip,limit:60})[0].walk,1801);
+  schedule.journeys[1][2]--;
+  assert.deepEqual(searchRegion({schedule,walking},{...trip,limit:60}),[]);
+  schedule.journeys[1][2]++;
+  schedule.services[0][3]['20261125']=2;
+  assert.deepEqual(searchRegion({schedule,walking},{...trip,limit:60}),[]);
 });

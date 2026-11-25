@@ -1,0 +1,33 @@
+{
+  "regionId": "jp-toyama-city",
+  "timezone": "Asia/Tokyo",
+  "outputSlug": "toyama",
+  "bounds": [36.5, 136.9, 36.9, 137.4],
+  "feeds": [
+    {
+      "id": "maidohaya",
+      "publisher": "富山市",
+      "name": "まいどはやバス",
+      "mode": "bus",
+      "routeTypes": ["3"],
+      "license": "CC0-1.0",
+      "catalog": "https://opdt.city.toyama.lg.jp/dataset/toyamacity-bus-gtfs-jp/resource/43903d9f-1d9c-42f0-bd01-8a5fc1cb828c",
+      "download": "https://opdt.city.toyama.lg.jp/dataset/8de65493-0af7-49d3-aab6-b495fc3ea2b0/resource/43903d9f-1d9c-42f0-bd01-8a5fc1cb828c/download/maidohaya-gtfs.zip"
+    },
+    {
+      "id": "chitetsu-tram",
+      "publisher": "富山地方鉄道株式会社",
+      "name": "富山地方鉄道 市内電車",
+      "mode": "tram",
+      "routeTypes": ["0", "3", "900"],
+      "modeNote": "資料と路線名称を照合すると路面電車。採用したZIPではroute_typeが3のため、このフィードに限り路面電車へ正規化する。",
+      "license": "CC0-1.0",
+      "catalog": "https://gtfs-data.jp/search?target_feed=chitetsu%2Achitetsushinaidensha",
+      "download": "https://api.gtfs-data.jp/v2/organizations/chitetsu/feeds/chitetsushinaidensha/files/feed.zip"
+    }
+  ],
+  "places": [
+    {"id":"poi-tad", "name":"富山県美術館周辺", "lat":36.71056, "lon":137.21000},
+    {"id":"poi-zoo", "name":"富山市ファミリーパーク周辺", "lat":36.691216, "lon":137.150787}
+  ]
+}

@@ -28,10 +28,10 @@ export function showOpening(onDetails) {
   dialog.querySelector('.opening-skip').addEventListener('click',close);
   dialog.querySelector('.opening-place').addEventListener('click',()=>{close();onDetails();});
   dialog.showModal();
-  const timeout = setTimeout(close,1550);
+  const timeout = setTimeout(close,3100);
   dialog.addEventListener('close',()=>clearTimeout(timeout),{once:true});
   dialog.querySelector('img').decode().catch(()=>{}).then(()=>{
-    if (dialog.open) finish = setTimeout(close,1050);
+    if (dialog.open) finish = setTimeout(close,2500);
   });
 }
 

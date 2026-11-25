@@ -10,6 +10,7 @@
 - [乗換検索の比較と開発計画](docs/transit-evaluation.md)
 - [旅の部屋、旅人タイプ、写真集](docs/experience-preview.md)
 - [富山市の経路検索試作](docs/toyama-pilot.md)
+- [交通オープンデータの更新と全国対応の設計](docs/open-transit.md)
 - [コミュニティのデータベース](docs/community-database.md)
 
 ## 開発環境
