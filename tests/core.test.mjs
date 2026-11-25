@@ -4,6 +4,10 @@ import test from 'node:test';
 import { escapeHtml, mapsSearch, mapsTransit, nearbyPlaces, rankPlaces, stampKey } from '../public/core.js';
 import { collections, places, travelerTypes } from '../public/data.js';
 
+import { communityTabs, editorial, feedPosts, homeFeature, reactionTypes, samplePosts } from '../public/community-data.js';
+import { photos } from '../public/photo-data.js';
+import { canFeaturePhoto, photoFor } from '../public/photos.js';
+
 test('search combines region, phrase and theme, retaining preferred themes first', () => {
   assert.deepEqual(rankPlaces(places,'自然',' 秋田 ').map(place=>place.id),['mototaki','hachibodai']);
   assert.deepEqual(rankPlaces(places,'温泉','温泉').map(place=>place.id),['nyuto']);
@@ -62,4 +66,41 @@ test('production build creates a versioned, resolvable offline cache', () => {
   const html = readFileSync(new URL('index.html',dist),'utf8');
   assert.match(html,/<html lang="ja">/);
   assert.match(html,/rel="manifest"/);
+});
+
+
+test('community feeds show finite public samples and honor locally followed editors', () => {
+  const ids = items => items.map(item => item.id);
+  assert.equal(feedPosts(samplePosts,'all').length, 6);
+  for (const [tab] of communityTabs.slice(2)) {
+    assert.equal(feedPosts(samplePosts,tab).length, 2);
+    assert.ok(feedPosts(samplePosts,tab).every(post=>post.kind === tab));
+  }
+  assert.deepEqual(feedPosts(samplePosts,'following'), []);
+  assert.deepEqual(ids(feedPosts(samplePosts,'following',{sampleFollows:[editorial.id]})),ids(samplePosts));
+  assert.deepEqual(feedPosts([{...samplePosts[0],visibility:'private'}],'all'),[]);
+  assert.equal(new Map(reactionTypes).get(0),'ありがとう');
+  assert.equal(new Map(reactionTypes).get(1),'行ってみたい');
+  assert.equal(new Map(reactionTypes).get(2),'参考になった');
+  assert.equal(new Map(reactionTypes).size,5);
+});
+
+test('real photos have attributable local assets and user photos require public consent and review', () => {
+  const base = new URL('../public/',import.meta.url);
+  for (const record of [...places,...samplePosts]) {
+    if (record.photoId) assert.ok(photoFor(record.photoId),`unknown photo in ${record.id}`);
+  }
+  for (const photo of Object.values(photos)) {
+    assert.ok(canFeaturePhoto(photo) && photo.originalTitle && photo.edits);
+    assert.equal(new URL(photo.originalUrl).hostname,'commons.wikimedia.org');
+    assert.equal(new URL(photo.license.url).hostname,'creativecommons.org');
+    assert.match(photo.src,/^\.\/assets\/photos\/[\w-]+\.webp$/);
+    accessSync(new URL(photo.src,base));
+    if (photo.smallSrc) accessSync(new URL(photo.smallSrc,base));
+  }
+  const example = {...photoFor(homeFeature),origin:'user',visibility:'public',homeConsent:{status:'granted',version:'v1'},moderation:'approved'};
+  assert.ok(canFeaturePhoto(example));
+  assert.equal(canFeaturePhoto({...example,visibility:'private'}),false);
+  assert.equal(canFeaturePhoto({...example,moderation:'pending'}),false);
+  assert.equal(canFeaturePhoto({...example,homeConsent:{status:'revoked',version:'v1'}}),false);
 });

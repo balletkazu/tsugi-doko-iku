@@ -1,4 +1,5 @@
 import { escapeHtml as e } from './core.js';
+import { photoCredit, photoFor, renderPhoto } from './photos.js';
 
 const paths = {
   home:'<path d="m3 10 9-7 9 7M5 9v11h14V9M10 20v-6h4v6"/>',
@@ -25,17 +26,23 @@ export function page(title, intro, content, { narrow = false, eyebrow = '' } = {
   return `<div class="page${narrow ? ' page-narrow' : ''}"><header class="page-title">${eyebrow ? `<p class="eyebrow">${eyebrow}</p>` : ''}<h1>${e(title)}</h1>${intro ? `<p class="section-intro">${e(intro)}</p>` : ''}</header>${content}</div>`;
 }
 export const empty = (title, body) => `<div class="empty flow"><h3>${e(title)}</h3><p class="muted">${e(body)}</p></div>`;
-export const picture = (name, classes, alt = '', extra = '') => `<img class="${classes}" src="./assets/${name}.webp" width="724" height="724" loading="lazy" decoding="async" alt="${e(alt)}" ${extra}>`;
-
 export function saveButton(id, active, small = false) {
   const label = active ? '保存を取り消す' : '行きたい場所に保存';
   return `<button type="button" class="${small ? 'icon-button card-save' : 'button button-outline'}" data-action="save-place" data-id="${id}" aria-pressed="${active}" aria-label="${label}">${icon('heart')}${small ? '' : label}</button>`;
 }
 export function placeCard(place, saved) {
-  return `<article class="place-card"><a class="place-link" href="#place/${place.id}">${picture(place.image,'card-image')}<span class="card-credit">イメージ</span><div class="card-main"><div class="card-meta">${icon('pin')}${place.region} · ${place.theme}</div><h3>${place.name}</h3><p>${place.intro}</p></div></a>${saveButton(place.id,saved,true)}</article>`;
+  const photo = photoFor(place.photoId);
+  return `<article class="place-card${photo ? '' : ' place-card-text'}">
+    <a class="place-link" href="#place/${place.id}">
+      ${photo ? renderPhoto(photo,'card-image') : ''}
+      <div class="card-main"><div class="card-meta">${icon('pin')}${place.region} · ${place.theme}</div>
+        <h3>${place.name}</h3><p>${place.intro}</p>
+      </div>
+    </a>
+    ${saveButton(place.id,saved,true)}
+    ${photo ? `<details class="credit-details place-credit"><summary>撮影者・ライセンス</summary>${photoCredit(photo)}</details>` : ''}
+  </article>`;
 }
-export function storyCard(story) {
-  return `<a class="story-card" href="#story/${story.id}">${picture(story.image,'')}<div class="story-body"><small>${story.label} · サンプル</small><h3>${story.title}</h3><p>${story.author}　${icon('arrow')}</p></div></a>`;
-}
+
 export const chips = (labels, selected, makeUrl) => `<div class="chip-list">${labels.map(label=>`<a class="chip" href="${e(makeUrl(label))}" ${label === selected ? 'aria-current="true"' : ''}>${e(label)}</a>`).join('')}</div>`;
 export const options = (name, labels, selected, format = String) => `<div class="options">${labels.map(value=>`<label class="option"><input type="radio" name="${name}" value="${e(value)}" ${String(value) === String(selected) ? 'checked' : ''}><span class="chip">${e(format(value))}</span></label>`).join('')}</div>`;

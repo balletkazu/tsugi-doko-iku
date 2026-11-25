@@ -1,10 +1,13 @@
 # つぎ どこ行く？
 
-心が動く風景から、次の旅へ。旅先を見つけ、公共交通での行き方を考え、自分のペースで旅を記録するスマートフォン向けウェブアプリです。
+旅の写真、日記、栞を分かち合うスマートフォン向けウェブアプリです。
 
 - [開発仕様書](docs/product-spec.md)
 - [アーキテクチャと開発計画](docs/architecture.md)
 - [試遊・検証・デプロイ](docs/preview.md)
+- [写真の出典と利用条件](docs/photo-credits.md)
+- [コミュニティの開発計画](docs/community-roadmap.md)
+- [乗換検索の比較と開発計画](docs/transit-evaluation.md)
 
 ## 開発環境
 

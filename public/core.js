@@ -1,5 +1,5 @@
 export const walkingLimits = [30, 60, 120];
-export const routePriorities = ['移動時間', '風景', '寄り道'];
+export const routePriorities = ['移動時間', '費用', '風景', '寄り道'];
 
 export function mapsSearch(place) {
   const url = new URL('https://www.google.com/maps/search/');
