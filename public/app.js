@@ -8,7 +8,8 @@ import { editorial, reactionTypes } from './community-data.js';
 import { photoFigure, photoFor } from './photos.js';
 import { createGallery } from './gallery.js';
 import { openingPhotoPage, showFirstOpening, showOpening } from './opening.js';
-import { mailbox, medalPage, milestones, playRoomSound, roomMotion, roomSettings } from './room.js';
+import { mailbox, medalPage, playRoomSound, roomMotion, roomSettings } from './room.js';
+import {medalById,medalEarned} from './medals.js';
 import { travelerRanking } from './traveler-quiz.js';
 import { allQuestions, fortunePage, mountFortune } from './fortune.js';
 import { loadToyamaPilot, pilotPage } from './transit-pilot.js';
@@ -158,7 +159,7 @@ function render({ navigate = false } = {}) {
     plan:()=>travelPlan(params), my:()=>travelPlan(params), menu:()=>travelPlan(params), trip:()=>recordScreen('trip',id,edit,state.data), journal:()=>recordScreen('journal',id,edit,state.data), stamps:()=>stampScreen(id,params,state.profile,world.snapshot()), about,
     saved:()=>savedPage(params), 'opening-photo':openingPhotoPage,
     photos:()=>gallery.screen(id,edit), type:fortunePage,
-    medals:()=>medalPage(state.profile,state.data), mail:()=>mailbox(state.profile,state.data),
+    medals:()=>medalPage(state.profile,state.data,world.snapshot()), mail:()=>mailbox(state.profile,state.data,world.snapshot()),
     'room-settings':()=>roomSettings(state.profile), pilot:()=>pilotPage(pilot,pilotRequest)
   };
   if (screen === 'pilot' && !pilotLoading) {
@@ -318,14 +319,20 @@ view.addEventListener('click', event => {
   if (action === 'replay-opening') {
     showOpening(()=>go('#opening-photo'));
   } else if (action === 'claim-medal') {
-    const medal = milestones.find(item=>item.id===id);
-    if (!medal?.isEarned(state.profile,state.data) || (state.profile.medals ?? []).includes(id)) return;
+    const medal = medalById(id);
+    if (!medalEarned(medal,state.profile,state.data,world.snapshot()) || (state.profile.medals ?? []).includes(id)) return;
     playRoomSound(state.profile,'medal');
     write(async()=>{
-      state.profile = await update('profile',(profile = {})=>medal.isEarned(profile,state.data) ? {...profile,medals:[...new Set([...(profile.medals ?? []),id])]} : profile);
+      state.profile = await update('profile',(profile = {})=>medalEarned(medal,profile,state.data,world.snapshot()) ? {...profile,medals:[...new Set([...(profile.medals ?? []),id])]} : profile);
       refreshControl(button);
       roomMotion(state.profile,view.querySelector('[data-medal="'+id+'"] .medal-icon'),'medal');
-      toast('メダルを受け取りました。');
+      toast('勲章を受け取りました。');
+    },button);
+  } else if (action === 'wear-title' && medalById(id)) {
+    write(async()=>{
+      state.profile=await update('profile',(profile={})=>(profile.medals??[]).includes(id)
+        ? {...profile,title:profile.title===id?null:id}:profile);
+      refreshControl(button);
     },button);
   } else if (action === 'swap') {
     const {from,to} = button.form.elements;

@@ -123,3 +123,21 @@ body .nav-link[aria-current=page]::after{display:none}
 .quiz-cell-18{background-position:66.66667% 100%}
 .quiz-cell-19{background-position:100.00000% 100%}
 .stop-number{display:inline-grid;place-items:center;min-width:1.3em;height:1.3em;padding:0 .18em;border-radius:50%;background:#e5ece1;color:#315a4b;font-size:.71rem;font-weight:750}
+.fitting-filter{padding:5px 9px}
+.wardrobe-filters{display:grid;grid-template-columns:minmax(0,1fr) minmax(105px,.55fr);gap:6px}
+.wardrobe-filters :is(input,select){font-size:16px;padding:5px 8px}
+.fitting-more{display:flex;align-items:center;justify-content:center;gap:10px;font-size:.83rem}
+.fitting-more[hidden]{display:none}
+.atelier-view{--atelier-size:clamp(174px,52vw,240px)}
+.atelier-hero{height:var(--atelier-size);width:min(100%,290px)}
+.atelier-hero canvas{width:var(--atelier-size);height:var(--atelier-size);max-width:100%}
+.atelier-controls{margin-top:-2px}
+.regional-tile{display:block;width:clamp(44px,17vw,72px);aspect-ratio:1;background:url('./assets/atelier/regional-objects.webp') no-repeat;background-size:400% 100%}
+.regional-1{background-position:33.333% 0}.regional-2{background-position:66.667% 0}.regional-3{background-position:100% 0}
+.catalog-pages{display:flex;justify-content:center;align-items:center;gap:12px;padding:6px}
+.cabinet-search{flex-wrap:wrap}.cabinet-search label{min-width:110px}
+.medal-card[data-theme="自然"] .medal-icon{background:#dce9c7;color:#41573e}
+.medal-card[data-theme="休息"] .medal-icon{background:#e8ddcf;color:#755642}
+.medal-card[data-theme="移動"] .medal-icon{background:#e1e9ed;color:#345875}
+.medal-card[data-theme="文化"] .medal-icon{background:#efe2c2;color:#856039}
+.house-title{display:block;text-align:center;font-weight:700}

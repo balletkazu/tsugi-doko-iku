@@ -1,6 +1,8 @@
 // Prefectural capital coordinates are approximate anchors for the illustrated atlas.
 import {hairPalette,skinPalette,clothPalette,tuningParts,tuningFields} from './avatar-palette.js';
 import { collections } from './data.js';
+import {itemNames, collectionItem} from './item-catalog.js';
+import {styles,styleIndex,styleIds} from './style-catalog.js';
 
 const capitals = [
   [43.06,141.35],[40.82,140.74],[39.70,141.15],[38.27,140.87],[39.72,140.10],[38.24,140.36],[37.75,140.47],
@@ -24,26 +26,26 @@ export const parts = {
   hair:['髪型','風に遊ぶショート','丸いボブ','二つ編み','くるくるカール','斜め分け','高いおだんご','短い刈り上げ','ウルフカット','肩までのボブ','リボンの低い結び髪','片側の三つ編み','真ん中分け','ゆれるロング','はねるピクシー','二つのおだんご','丸い短いカール'],
   hairColor:['髪色',...hairPalette.map(([name])=>name)],
   skin:['肌色',...skinPalette.map(([name])=>name)],
-  outfit:['洋服','旅の上着','山吹の作業着','雨のポンチョ','夏のワンピース','オーバーオール','藍の旅着','ニットのセーター','冬のダッフル'],
+  outfit:['洋服',...styles.outfit.map(item=>item.name)],
   clothColor:['服の色',...clothPalette.map(([name])=>name)],
   pattern:['服の柄','元の柄','しま','水玉','格子'],
   material:['生地','そのまま','ざらりとした麻','起毛ウール','なめらかな綿'],
   layer:['重ね着','なし','格子のベスト','生成りの肩掛け'],
   body:['体型','ふつう','ほっそり','ふっくら'], height:['身長','ふつう','小柄','高め'],
-  hat:['帽子','なし','山歩き帽','ニット帽','キャップ','ベレー'],
-  shoes:['靴','革のブーツ','帆布靴','赤い靴','長靴'],
-  glasses:['眼鏡','なし','丸眼鏡','角眼鏡','金縁のハーフリム','青緑の楕円眼鏡'],
-  bag:['リュック','なし','革のリュック','布のリュック'],
-  accessory:['小物','なし','カメラ','スカーフ','花飾り','イヤリング']
+  hat:['帽子',...styles.hat.map(item=>item.name)],
+  shoes:['靴',...styles.shoes.map(item=>item.name)],
+  glasses:['眼鏡',...styles.glasses.map(item=>item.name)],
+  bag:['リュック',...styles.bag.map(item=>item.name)],
+  accessory:['小物',...styles.accessory.map(item=>item.name)]
 };
 export const poses = {walk:'歩く',run:'走る',sit:'座る',sleep:'眠る',joy:'喜ぶ',surprise:'驚く',climb:'汗をかく',eat:'食べる',drink:'お茶を飲む',photo:'写真を撮る',read:'本を読む',look:'景色を眺める'};
 export const activities = {
   walk:['徒歩','walk','leaf'], cycle:['自転車','run','wheel'],train:['電車','look','ticket'],bus:['バス','sit','ticket'],boat:['船','look','shell'],plane:['飛行機','sit','wing'],
   hike:['登山','climb','leaf'],peak:['山頂','joy','stone'],spa:['温泉','sit','bowl'],hotel:['宿泊','sleep','lamp'],hut:['山小屋','read','lamp'],
   meal:['ご当地の食事','eat','bowl'],cafe:['カフェ','drink','cup'],beach:['海辺','look','shell'],resort:['休養','sit','shell'],
-  art:['アート鑑賞','read','frame'],tour:['観光','look','frame'],play:['レジャー','joy','wheel'],photo:['風景の撮影','photo','frame'],rain:['雨の散歩','walk','drop'],snow:['雪の散歩','walk','snow']
+  art:['アート鑑賞','read','frame'],tour:['観光','look','frame'],nature:['自然観察','look','leaf'],play:['レジャー','joy','wheel'],photo:['風景の撮影','photo','frame'],rain:['雨の散歩','walk','drop'],snow:['雪の散歩','walk','snow']
 };
-export const items = {plant:'窓辺の鉢植え',books:'積み重ねた本',leaf:'押し葉の標本',shell:'貝殻の標本',wheel:'車輪の置物',ticket:'乗車券の額',wing:'翼の模型',stone:'山石の標本',bowl:'旅の小鉢',lamp:'山小屋のランプ',cup:'陶器のカップ',frame:'小さな写真額',drop:'雨粒の風鈴',snow:'雪の結晶飾り',fern:'シダの鉢',teaset:'藍染めの茶器',lantern:'星あかりの灯籠',brooch:'朝露のブローチ',rug:'夕焼けの織物'};
+export const items = itemNames;
 export const starterSlots = ['plant',null,'books'];
 export const avatarDefaults = {design:2,name:'旅人',...Object.fromEntries(Object.keys(parts).map(key=>[key,0])),bag:1,hat:0};
 export function avatarFrom(input = {}) {
@@ -53,10 +55,17 @@ export function avatarFrom(input = {}) {
   const tune=Object.fromEntries(tuningParts.map(part=>[part,Object.fromEntries(Object.keys(tuningFields).map(key=>[key,bounded(input.tune?.[part]?.[key])]))]));
   const hairTint=typeof input.hairTint==='string'&&/^#[a-f0-9]{6}$/i.test(input.hairTint)?input.hairTint:null;
   return Object.fromEntries([['design',2],['tune',tune],['hairTint',hairTint],['name',String(input.name??'').trim().slice(0,24)||'旅人'],
-    ...Object.entries(parts).map(([key,choices])=>[key,Number.isInteger(input[key]) && input[key]>=0 && input[key]<choices.length-1 ? input[key] : avatarDefaults[key]])]);
+    ...Object.entries(parts).map(([key,choices])=>{
+      const value=styleIndex(key,input);
+      return [key,Number.isInteger(value)&&value>=0&&value<choices.length-1?value:avatarDefaults[key]];
+    })]);
+}
+export function saveAppearance(input){
+  const avatar=avatarFrom(input);
+  return {...avatar,styleIds:styleIds(avatar)};
 }
 export function inventory(game) {
-  return [...new Set(['plant','books',...(game.economy?.owned??[]),...(game.entries??[]).map(entry=>activities[entry.activity]?.[2]).filter(Boolean)])];
+  return [...new Set(['plant','books',...(game.economy?.owned??[]),...(game.localFinds??[]),...(game.entries??[]).map(entry=>activities[entry.activity]?.[2]).filter(Boolean)])];
 }
 export function estimateActivity(previous,current) {
   if (!Number.isFinite(current.accuracy) || current.accuracy>80) return {kind:null,confidence:'低',reason:'位置の誤差が大きいため、活動を選んでください。'};
@@ -78,5 +87,5 @@ export function estimateActivity(previous,current) {
 export function newEntry({activity,place,pref,avatar,date,id,photo}) {
   if(!Object.hasOwn(activities,activity)) throw new Error('活動を選んでください。');
   if(pref && !prefectures.some(p=>p.id===pref)) throw new Error('都道府県を選び直してください。');
-  return {id,date,activity,place:String(place||'').trim().slice(0,80),pref:pref||'',avatar:{...avatarFrom(avatar),...(avatar?.pin && Object.hasOwn(items,avatar.pin)?{pin:avatar.pin}:{})},...(photo?{photo}:{}),source:'self-confirmed'};
+  return {id,date,activity,place:String(place||'').trim().slice(0,80),pref:pref||'',avatar:{...saveAppearance(avatar),...(avatar?.pin && collectionItem(avatar.pin)?.wear?{pin:avatar.pin}:{})},...(photo?{photo}:{}),source:'self-confirmed'};
 }

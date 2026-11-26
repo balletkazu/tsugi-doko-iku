@@ -1,18 +1,6 @@
-import {items,inventory} from './world-data.js';
-import {regionalItems} from './regional-data.js';
+import {inventory} from './world-data.js';
+import {collectionItem} from './item-catalog.js';
 
-// Each footprint is measured in tiles. Furniture artwork is drawn above the occupied floor tiles.
-export const furnishings={
-  bed:{name:'窓辺のベッド',art:0,w:2,h:3,pose:'sleep',line:'毛布にくるまって、ひと休み。'},
-  shelf:{name:'木の本棚',art:1,w:2,h:1,pose:'read',line:'旅の本をめくりました。'},
-  tea:{name:'お茶のテーブル',art:2,w:2,h:2,pose:'drink',line:'あたたかいお茶をどうぞ。'},
-  chair:{name:'森色の椅子',art:3,w:1,h:1,pose:'sit',line:'ゆっくり腰かけました。'},
-  plant:{name:'窓辺の鉢植え',art:4,w:1,h:1},fern:{name:'シダの鉢',art:4,w:1,h:1},
-  rug:{name:'夕焼けの織物',art:5,w:2,h:2,flat:true},lamp:{name:'山小屋のランプ',art:6,w:1,h:1},
-  lantern:{name:'星あかりの灯籠',art:6,w:1,h:1},bench:{name:'庭のベンチ',art:7,w:2,h:1,pose:'sit',line:'庭を眺めて、ひと休み。'},
-  pond:{name:'睡蓮の小池',art:8,w:2,h:2,outside:true,groundArt:true},greenhouse:{name:'小さな温室',art:9,w:2,h:2,outside:true},
-  stream:{name:'石を並べた小川',art:10,w:3,h:1,outside:true,groundArt:true}
-};
 const starters=['bed','shelf','tea','chair','plant','rug','bench','pond','greenhouse','stream','lamp'];
 export const homeAreas={
   room:{name:'居間',width:9,height:7,arrival:[4,6],outside:false},
@@ -51,10 +39,8 @@ const available={
   garden:['roof','siding','ground','light'],orchard:['roof','siding','ground','light']
 };
 export const coveringsFor=area=>available[area];
-export const furniture=id=>Object.hasOwn(furnishings,id)?furnishings[id]:Object.hasOwn(regionalItems,id)?
-  {name:regionalItems[id].name,art:regionalItems[id].art,icon:regionalItems[id].icon,w:1,h:1}:
-  Object.hasOwn(items,id)?{name:items[id],w:1,h:1,wall:['frame','ticket'].includes(id)}:null;
-export const homeStock=game=>[...new Set([...starters,...inventory(game),...(game.localFinds??[])])];
+export const furniture=id=>collectionItem(id)?.placement??null;
+export const homeStock=game=>[...new Set([...starters,...inventory(game)])].filter(id=>furniture(id));
 export function readHome(game){
   if(game.homestead)return game.homestead;
   const room=[

@@ -332,7 +332,7 @@ test('avatar palettes and customization keep truthful stable counts',async()=>{
   const {avatarFrom,parts}=await import('../public/world-data.js');
   const {hairPalette,skinPalette}=await import('../public/avatar-palette.js');
   const {facings}=await import('../public/traveler-art.js');
-  assert.equal(parts.hair.length-1,16);assert.equal(parts.outfit.length-1,8);
+  assert.equal(parts.hair.length-1,16);assert.equal(parts.outfit.length-1,12);
   assert.equal(new Set(hairPalette.map(([,color])=>color)).size,49);
   assert.equal(skinPalette.length,20);assert.equal(facings.length,8);
   const a=avatarFrom({design:2,hairTint:'#63848e',tune:{eyes:{size:99,gap:-77},mouth:{x:5}}});
@@ -341,7 +341,7 @@ test('avatar palettes and customization keep truthful stable counts',async()=>{
 });
 test('regional keepsakes match precise user-entered activities rather than an adjacent prefecture',async()=>{
   const {activityEvents,regionalItems,keepsakesFor}=await import('../public/regional-data.js');
-  assert.equal(Object.keys(regionalItems).length,8);
+  assert.equal(Object.keys(regionalItems).length,12);
   assert.ok(Object.values(regionalItems).every(item=>item.source.startsWith('https://')));
   assert.equal(Object.keys(activityEvents).length,10);
   assert.deepEqual(keepsakesFor({pref:'JP-16',place:'氷見 市',activity:'meal'}),['himi-buri']);
@@ -383,4 +383,47 @@ test('the Toyama overview numbers real boarding and alighting points in itinerar
   assert.deepEqual(markers.map(marker=>marker.number),[1,2,3,4,5,6]);
   assert.deepEqual(markers[3].coords,geometry.stops[24]);
   assert.ok(markers.every(marker=>Boolean(marker.label)));
+});
+
+test('wardrobe keys round-trip without changing the old numeric choices',async()=>{
+  const {avatarFrom,saveAppearance}=await import('../public/world-data.js');
+  const {styles,searchStyles}=await import('../public/style-catalog.js');
+  const keep=saveAppearance({design:2,outfit:7,hat:3,shoes:2});
+  assert.equal(keep.styleIds.outfit,'winter-duffle');
+  assert.equal(keep.styleIds.hat,'indigo-cap');
+  assert.equal(avatarFrom({...keep,outfit:2}).outfit,7);
+  assert.equal(avatarFrom({design:2,outfit:3,styleIds:{outfit:'missing'}}).outfit,3);
+  assert.equal(searchStyles('outfit','木綿','home')[0].id,'cotton-roomwear');
+  assert.equal(searchStyles('outfit','木綿','coast').length,0);
+  for(const items of Object.values(styles))assert.equal(items.length,new Set(items.map(x=>x.id)).size);
+});
+
+test('the brim clears the eyes in every view and the walking cycle keeps one foot down',async()=>{
+  const {facings,rigView,fitHat,stride,eyeLine,visibleMotion}=await import('../public/avatar-rig.js');
+  const {headwear}=await import('../public/sprite-guides.js');
+  for(const facing of facings)for(let hat=1;hat<=4;hat++){
+    const view=rigView(facing);
+    const fit=fitHat(hat,view,52,52,headwear[(hat-1)*4+view.angle]);
+    assert.ok(fit.seat<eyeLine&&fit.y>=-49&&fit.w>0&&fit.h>0);
+  }
+  for(let i=0;i<100;i++)assert.ok(stride(i/100,-1).lift===0||stride(i/100,1).lift===0);
+  assert.equal(visibleMotion('sleep'),'look');
+  assert.equal(visibleMotion('read'),'read');
+});
+
+test('the collection and permanent medals share stable, eligible item records',async()=>{
+  const {collectionItem,searchCollection}=await import('../public/item-catalog.js');
+  const {homeStock}=await import('../public/home-layout.js');
+  const {keepsakesFor}=await import('../public/regional-data.js');
+  const {medalById,medalEarned,keepEarnedMedals,selectedTitle}=await import('../public/medals.js');
+  assert.ok(collectionItem('oshima-camellia').wear);
+  assert.ok(homeStock({localFinds:['oshima-camellia']}).includes('oshima-camellia'));
+  assert.equal(searchCollection('regional','大島町')[0].id,'oshima-camellia');
+  const entry={source:'self-confirmed',pref:'JP-13',place:'伊豆大島',activity:'nature'};
+  assert.deepEqual(keepsakesFor(entry),['oshima-camellia']);
+  const medal=medalById('island-breeze'),game=keepEarnedMedals({entries:[entry]}, {}, {});
+  assert.ok(medalEarned(medal,{},{},{...game,entries:[]}));
+  assert.equal(medalEarned(medal,{},{},{entries:[{...entry,source:'virtual'}]}),false);
+  assert.equal(medalEarned(medalById('local-storyteller'),{},{},{localProposals:[{place:'伊豆大島'}]}),false);
+  assert.equal(selectedTitle({title:'island-breeze',medals:['island-breeze']}),'島風の旅人');
 });

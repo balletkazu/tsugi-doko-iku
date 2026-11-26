@@ -1,15 +1,17 @@
 import {avatarFrom,avatarDefaults} from './world-data.js';
 import {hairPalette,skinPalette,clothPalette} from './avatar-palette.js';
-import {front,profile,rear,garment,detail} from './sprite-guides.js';
+import {front,profile,rear,garment,detail,headwear,wardrobe,footwear,regionalObjects} from './sprite-guides.js';
+import {styles} from './style-catalog.js';
+import {collectionItem} from './item-catalog.js';
+import {spriteSize as cell,groundY,eyeLine,facings,rigView,fitHat,stride,visibleMotion} from './avatar-rig.js';
 
-const cell=128;
-const sheets=['neutral-heads','skin-zones','heads-back','garments','details'];
+export {facings};
+
+const sheets=['neutral-heads','skin-zones','heads-back','garments','details','headwear','wardrobe','footwear','regional-objects'];
 const images=new Map();
 const painted=new Map();
 const normalized=new WeakMap();
 let assets;
-export const facings=['south','north','east','west','southeast','southwest','northeast','northwest'];
-const outfitIndex=[0,1,4,7,5,2,3,6];
 const last=(a,b,t)=>a+(b-a)*t;
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 const rgb=hex=>hex.slice(1).match(/../g).map(byte=>parseInt(byte,16));
@@ -36,12 +38,12 @@ function drawCell(ctx,image,index,x,y,w,h,box=[0,0,cell,cell]){
   ctx.drawImage(image,index%4*cell+left,Math.floor(index/4)*cell+top,right-left,bottom-top,x,y,w,h);
 }
 function paint(name,index,a){
-  const head=name!=='garments';
+  const head=name!=='garments'&&name!=='wardrobe';
   const hair=head&&(a.hairTint??hairPalette[a.hairColor]?.[1]);
   const skin=name==='neutral-heads'&&a.skin>0&&skinPalette[a.skin][1];
-  const cloth=!head&&clothPalette[a.clothColor]?.[1],shoe=!head&&['','#d7ba97','#ae5037','#658b71'][a.shoes];
-  if(!(hair||skin||cloth||shoe||(!head&&(a.pattern||a.material))))return null;
-  const key=[name,index,hair,skin,cloth,shoe,head?'':a.pattern,head?'':a.material].join('|');
+  const cloth=!head&&clothPalette[a.clothColor]?.[1];
+  if(!(hair||skin||cloth||(!head&&(a.pattern||a.material))))return null;
+  const key=[name,index,hair,skin,cloth,head?'':a.pattern,head?'':a.material].join('|');
   if(painted.has(key))return painted.get(key);
   const image=surface(),ctx=image.getContext('2d',{willReadFrequently:true});
   drawCell(ctx,sheet(name),index,0,0,cell,cell);
@@ -53,8 +55,7 @@ function paint(name,index,a){
     masks=ctx.getImageData(0,0,cell,cell).data;
   }
   const inkHair=hair?rgb(hair):null,inkSkin=skin?rgb(skin):null,inkCloth=cloth?rgb(cloth):null;
-  const clothingBox=garment[index];
-  const inkShoe=shoe?rgb(shoe):null;
+  const clothingBox=(name==='wardrobe'?wardrobe:garment)[index];
   const p=data.data;
   for(let i=0;i<p.length;i+=4){
     if(p[i+3]<20)continue;
@@ -70,7 +71,6 @@ function paint(name,index,a){
       if(inkHair&&hairWeight)value=last(value,inkHair[c]*clamp(luma/123,.46,1.53),hairWeight);
       if(inkSkin&&skinWeight)value=last(value,inkSkin[c]*clamp(luma/207,.47,1.22)+(c===0?(r-b-48)*.17:0),skinWeight*.94);
       if(inkCloth&&onCoat)value=last(value,inkCloth[c]*clamp(luma/127,.43,1.45),.83);
-      if(inkShoe&&y>last(clothingBox[1],clothingBox[3],.86))value=last(value,inkShoe[c]*clamp(luma/113,.39,1.42),.77);
       p[i+c]=value+fabric;
     }
   }
@@ -160,126 +160,236 @@ function placeFeatures(ctx,index,offset,scale,a,pose,blink,eyes,mouth,side){
   face.restore();
   ctx.drawImage(faceLayer,-64,-64);
 }
+function headShape(a,view){
+  const scale=.62;
+  const [left,right,eyesY,mouthY]=front[a.hair],mid=(left+right)/2;
+  const headWidth=(right-left)*scale+36;
+  if(view.rearward){
+    const box=rear[a.hair],w=(box[2]-box[0])*scale,h=(box[3]-box[1])*scale;
+    return {name:'heads-back',index:a.hair,x:-w/2+(view.side?-3:0),y:1-h,w,h,box,headWidth};
+  }
+  const [px,py,mx,my]=profile[a.hair];
+  const eyeX=view.side?(view.oblique?10:16):0;
+  const x=view.side?eyeX-px*scale:-mid*scale,y=eyeLine-(view.side?py:eyesY)*scale;
+  return {name:'neutral-heads',index:(view.side?16:0)+a.hair,x,y,w:cell*scale,h:cell*scale,
+    eyes:[eyeX,eyeLine,view.side?0:(right-left)*scale/2],mouth:[view.side?x+mx*scale:0,y+(view.side?my:mouthY)*scale],
+    headWidth,scale};
+}
+function shadeBrim(ctx,mount){
+  const {x,w,seat}=mount;
+  const shadow=ctx.createLinearGradient(0,seat-2,0,seat+8);
+  shadow.addColorStop(0,'#32201763');shadow.addColorStop(1,'#32201700');
+  ctx.save();
+  ctx.globalCompositeOperation='source-atop';
+  ctx.fillStyle=shadow;
+  ctx.beginPath();
+  ctx.moveTo(x+w*.06,seat-5);
+  ctx.quadraticCurveTo(x+w*.53,seat-1,x+w*.94,seat-5);
+  ctx.lineTo(x+w*.84,seat+6);
+  ctx.quadraticCurveTo(x+w*.5,seat+12,x+w*.16,seat+6);
+  ctx.closePath();ctx.fill();ctx.restore();
+}
+function behindBrim(ctx,mount,a){
+  if(!mount.brim)return;
+  const {x,w,seat}=mount;
+  oval(ctx,x+w*.5,seat-2,w*.47,4,a.hat===3?'#272b32':'#694727');
+}
+let headLayer;
+function paintHead(ctx,a,shape,view,pose,blink,mount){
+  headLayer??=surface();
+  const layer=headLayer.getContext('2d');
+  layer.clearRect(0,0,cell,cell);
+  layer.save();layer.translate(64,64);
+  if(mount){
+    // Keep the locks and ear-level hair below the cap. A bun cannot poke
+    // through the crown, even when its natural height exceeds the brim.
+    layer.beginPath();
+    layer.moveTo(-64,mount.seat-13);
+    layer.quadraticCurveTo(0,mount.seat+3,64,mount.seat-13);
+    layer.lineTo(64,64);layer.lineTo(-64,64);layer.closePath();layer.clip();
+  }
+  const {name,index,x,y,w,h,box}=shape;
+  part(layer,name,index,a,x,y,w,h,box);
+  if(shape.eyes)placeFeatures(layer,index,[x,y],shape.scale,a,pose,blink,shape.eyes,shape.mouth,view.side);
+  if(mount)shadeBrim(layer,mount);
+  layer.restore();
+  ctx.drawImage(headLayer,-64,-64);
+}
+function eyewear(ctx,a,shape,view){
+  if(!a.glasses||!shape.eyes)return;
+  const index=3+a.glasses,box=detail[index], [eyeX,y,gap]=shape.eyes;
+  const ink=['','#70432e','#3e352e','#a27b4e','#38574f'][a.glasses];
+  if(view.side){
+    curve(ctx,eyeX-5,y-2,eyeX-13,y-3,eyeX-22,y+.2,ink,1.18);
+    const half=[box[0],box[1],(box[0]+box[2])/2,box[3]];
+    drawCell(ctx,sheet('details'),index,eyeX-6,y-4.8,13,10,half);
+    curve(ctx,eyeX+5,y-1,eyeX+7,y-2,eyeX+8,y-.3,ink,.8);
+  }else{
+    const w=gap*2+12;
+    curve(ctx,-w/2,y-2,-w/2-3,y-2,-w/2-5,y+1,ink,1);
+    curve(ctx,w/2,y-2,w/2+3,y-2,w/2+5,y+1,ink,1);
+    prop(ctx,index,-w/2,y-5.6,w,11);
+  }
+}
 function head(ctx,a,pose,blink,view,headroom){
-  const {rearward,side,oblique}=view;
-  const tuning=a.tune?.face??{};
-  const scale=.62,eyeLine=-11;
+  const tuning=a.tune?.face??{},shape=headShape(a,view);
+  const index=(a.hat-1)*4+view.angle;
+  const mount=a.hat?fitHat(a.hat,view,shape.headWidth,headroom,headwear[index]):null;
   ctx.save();
   ctx.translate((tuning.x??0)*.3,(tuning.y??0)*.33);
   ctx.rotate((tuning.angle??0)*Math.PI/190);
   ctx.scale(([1,.89,1.1,.92][a.face])+(tuning.size??0)*.017,1+(tuning.gap??0)*.014);
-  if(rearward){
-    const box=rear[a.hair],w=(box[2]-box[0])*scale,h=(box[3]-box[1])*scale;
-    part(ctx,'heads-back',a.hair,a,-w/2,-h+1,w,h,box);
-  }else if(side){
-    const [eyeX,eyeY,mouthX,mouthY]=profile[a.hair];
-    const x=(oblique?10:16)-eyeX*scale,y=eyeLine-eyeY*scale;
-    part(ctx,'neutral-heads',16+a.hair,a,x,y,128*scale,128*scale);
-    placeFeatures(ctx,16+a.hair,[x,y],scale,a,pose,blink,[x+eyeX*scale,eyeLine,0],[x+mouthX*scale,y+mouthY*scale],true);
-  }else{
-    const [left,right,eyeY,mouthY]=front[a.hair],mid=(left+right)/2;
-    const y=eyeLine-eyeY*scale;
-    part(ctx,'neutral-heads',a.hair,a,-mid*scale,y,128*scale,128*scale);
-    placeFeatures(ctx,a.hair,[-mid*scale,y],scale,a,pose,blink,[0,eyeLine,(right-left)*scale/2],[0,y+mouthY*scale],false);
+  if(mount)behindBrim(ctx,mount,a);
+  paintHead(ctx,a,shape,view,pose,blink,mount);
+  eyewear(ctx,a,shape,view);
+  if(mount)drawCell(ctx,sheet('headwear'),index,mount.x,mount.y,mount.w,mount.h,headwear[index]);
+  if(a.accessory===3){
+    const y=mount?mount.seat+2:-25;
+    prop(ctx,10,view.side?-17:-25,y,14,9);
   }
-  // Headwear is a separate layer, seated above the eye line even for the
-  // deepest cap. The crop uses its own silhouette, never a fixed atlas box.
-  if(a.hat){
-    const box=detail[a.hat-1],aspect=(box[2]-box[0])/(box[3]-box[1]);
-    const width=[0,68,55,61,59][a.hat]*(side?.84:1);
-    const brim=rearward?-23:eyeLine-5;
-    const h=Math.min(width/aspect,Math.max(22,headroom+brim-3));
-    const w=h*aspect;
-    prop(ctx,a.hat-1,-w/2+(side?5:0),brim-h,w,h);
-  }
-  if(a.glasses&&!rearward){
-    const [left,right]=front[a.hair],w=side?21:(right-left)*scale+13;
-    if(side){
-      ctx.save();ctx.beginPath();ctx.rect(0,eyeLine-6,30,14);ctx.clip();
-      prop(ctx,3+a.glasses,-1,eyeLine-6,w,12);ctx.restore();
-    }else prop(ctx,3+a.glasses,-w/2,eyeLine-6,w,13);
-  }
-  if(a.accessory===3)prop(ctx,10,side?0:-26,-28,17,13);
-  if(a.accessory===4&&!rearward){
-    if(side){
-      ctx.save();ctx.beginPath();ctx.rect(-4,-5,8,13);ctx.clip();prop(ctx,11,-4,-5,17,13);ctx.restore();
-    }else prop(ctx,11,-25,-5,50,11);
+  if(a.accessory===4&&!view.rearward){
+    const eyeX=shape.eyes[0];
+    if(view.side){
+      const box=detail[11], half=[box[0],box[1],(box[0]+box[2])/2,box[3]];
+      drawCell(ctx,sheet('details'),11,eyeX-23,-4,7,11,half);
+    }else prop(ctx,11,-23,-4,46,10);
   }
   ctx.restore();
 }
-function body(ctx,a,view,step){
-  const outfit=outfitIndex[a.outfit],box=garment[outfit];
-  const w=(box[2]-box[0])*.67*(view.side?.77:1),h=(box[3]-box[1])*.56;
-  const x=-w/2,y=-h,strap=(a.bag||view.rearward)?a.bag:0;
-  if(strap&&!view.rearward)prop(ctx,11+strap,view.side?-w*.72:-w*.64,y+5,24,33);
-  const bootY=last(box[1],box[3],.77),bootH=(box[3]-bootY)*.56;
-  const split=(box[0]+box[2])/2;
-  part(ctx,'garments',outfit,a,x,y,w,h-bootH,[box[0],box[1],box[2],bootY]);
-  for(const side of [-1,1]){
-    const crop=side<0?[box[0],bootY,split,box[3]]:[split,bootY,box[2],box[3]];
-    ctx.save();
-    ctx.translate(x+(side>0?w/2:0)+side*step,y+h-bootH-Math.max(0,side*step)*.33);
-    part(ctx,'garments',outfit,a,0,0,w/2,bootH,crop);
-    ctx.restore();
-  }
-  if(view.rearward&&strap)prop(ctx,11+strap,-19,y+7,38,34);
-  if(a.layer&&!view.rearward)prop(ctx,13+a.layer,-w*.39,y+4,w*.78,h*.43);
-  if(a.pin&&!view.rearward)oval(ctx,w*.22,y+13,2.25,2.25,'#d7a657');
-  return y;
+
+function wearPack(ctx,a,view,width,y,behind){
+  if(!a.bag||behind===view.rearward)return;
+  const index=11+a.bag;
+  const w=view.rearward?33:view.side?21:23;
+  const x=view.rearward?-w/2:view.side?-width*.60-w*.26:-width*.52-w*.26;
+  const h=view.rearward?31:28;
+  prop(ctx,index,x,y+(view.rearward?4:6),w,h);
 }
-const actionStyle={
-  walk:{pace:.49,stride:3.2,lean:.04},run:{pace:.78,stride:5.4,lean:.13},
-  climb:{pace:.52,stride:4,lean:.19},sit:{squat:.77},sleep:{squat:.78,turn:-Math.PI/2},
-  joy:{pace:.38,bounce:8},surprise:{pace:.5,bounce:3},eat:{pace:.43},drink:{pace:.37},photo:{pace:.45},read:{pace:.20}
-};
-function drawCharacter(canvas,a,pose,frame){
+function collarAndHolding(ctx,a,view,w,neck,pose,pageTurn){
+  if(view.rearward)return;
+  const side=view.side;
+  if(a.bag){
+    const shade=a.bag===1?'#66452ed9':'#38424bd9';
+    for(const sign of side?[-1]:[-1,1])curve(ctx,sign*w*.29,neck+4,sign*w*.22,neck+10,sign*w*.29,neck+19,shade,2);
+  }
+  if(a.accessory===2)prop(ctx,9,-(side?10:14),neck-1,side?22:29,24);
+  if(a.accessory===1&&pose!=='read'){
+    const x=side?6:0,y=neck+16;
+    curve(ctx,-w*.16,neck+2,-w*.14,y-6,x-8,y+2,'#63452f',1.18);
+    curve(ctx,w*.15,neck+2,w*.19,y-6,x+9,y+2,'#63452f',1.18);
+    prop(ctx,8,x-10,y,21,14);
+  }
+  if(a.pin&&pose!=='read'){
+    const item=collectionItem(a.pin);
+    const y=neck+12,x=w*.24;
+    if(item?.sheet==='regional-objects')drawCell(ctx,sheet(item.sheet),item.art,x-4,y-4,8.4,8.4,regionalObjects[item.art]);
+    else oval(ctx,x,y,2.25,2.25,'#d7a657');
+  }
+  if(pose==='read')openBook(ctx,a,w,neck,pageTurn);
+}
+function openBook(ctx,a,w,y,pageTurn){
+  const left=-w*.34,right=w*.34,middle=y+20;
+  const skin=skinPalette[a.skin][1];
+  ctx.save();ctx.lineJoin='round';
+  ctx.shadowColor='#3f2b224d';ctx.shadowBlur=2;ctx.shadowOffsetY=1;
+  ctx.beginPath();ctx.moveTo(left,middle-4);ctx.quadraticCurveTo(-7,middle-8,0,middle-3);
+  ctx.quadraticCurveTo(8,middle-8,right,middle-4);
+  ctx.lineTo(right-2,middle+6);ctx.quadraticCurveTo(6,middle+5,0,middle+9);
+  ctx.quadraticCurveTo(-5,middle+5,left+2,middle+6);ctx.closePath();
+  ctx.fillStyle='#efdfb7';ctx.fill();ctx.shadowColor='transparent';
+  ctx.strokeStyle='#775941';ctx.lineWidth=1.15;ctx.stroke();
+  curve(ctx,0,middle-2,0,middle+3,0,middle+8,'#ac8b59',.8);
+  for(const side of [-1,1])for(let line=0;line<2;line++){
+    const at=middle+line*2;
+    curve(ctx,side*4,at,side*7,at-1,side*10,at,'#b89c6b',.65);
+  }
+  if(pageTurn>.06){
+    ctx.beginPath();ctx.moveTo(0,middle+7);ctx.quadraticCurveTo(9*pageTurn,middle-11,11*pageTurn,middle-5);
+    ctx.lineTo(0,middle-3);ctx.closePath();
+    ctx.fillStyle='#faf0cd';ctx.fill();ctx.strokeStyle='#b99867';ctx.lineWidth=.7;ctx.stroke();
+  }
+  oval(ctx,left+.7,middle+3.5,2.6,2.4,skin);
+  oval(ctx,right-.7-7*pageTurn,middle+3-5*pageTurn,2.6,2.3,skin);
+  ctx.restore();
+}
+
+function drawFoot(ctx,a,view,clothing,box,leg,w,bootY,bootH,side,step,walking){
+  const split=(box[0]+box[2])/2;
+  const half=side<0?[box[0],bootY,split,box[3]]:[split,bootY,box[2],box[3]];
+  const footSpacing=a.shoes&&view.angle===2?.075:.25;
+  const x=side*w*footSpacing+(view.side?3:0);
+  ctx.save();
+  ctx.translate(x+(walking?step.x*(view.side?.95:.30):0),-step.lift);
+  ctx.rotate(step.angle*(view.side?1:side*.65));
+  if(!a.shoes)part(ctx,clothing.sheet,leg,a,-w/4,-bootH,w/2,bootH,half);
+  else{
+    const pick=(a.shoes-1)*4+view.angle,full=footwear[pick];
+    const single=view.angle===2;
+    const mid=(full[0]+full[2])/2;
+    const crop=single?full:side<0?[full[0],full[1],mid,full[3]]:[mid,full[1],full[2],full[3]];
+    const width=w*(single?.39:.27);
+    const height=Math.max(bootH-.4,a.shoes===3?12:8.5);
+    const ankle=w*(single?.14:.105);
+    ctx.beginPath();
+    ctx.roundRect(-ankle/2,-bootH-3,ankle,Math.max(3.5,bootH+4-height*.61),1.7);
+    ctx.fillStyle=clothing.id==='coast-embroidered'?skinPalette[a.skin][1]:'#695343';
+    ctx.fill();
+    drawCell(ctx,sheet('footwear'),pick,-width/2,-height,width,height,crop);
+  }
+  ctx.restore();
+}
+function body(ctx,a,view,pose,frame){
+  const clothing=styles.outfit[a.outfit],old=clothing.sheet==='garments';
+  const bounds=old?garment:wardrobe,leg=clothing.cell+(old?0:view.angle),box=bounds[leg],frontBox=bounds[clothing.cell];
+  const h=(frontBox[3]-frontBox[1])*.55;
+  const w=(box[2]-box[0])*h/(box[3]-box[1])*(old?.98:1.09)*(old&&view.side?.84:1);
+  const neck=-h,walking=pose==='walk',phase=(frame%32)/32;
+  const readingTick=frame%68;
+  const pageTurn=pose==='read'&&readingTick>=14&&readingTick<=29?Math.sin((readingTick-14)*Math.PI/15):0;
+  wearPack(ctx,a,view,w,neck,true);
+  const bootY=last(box[1],box[3],a.shoes?.82:.76),bootH=(box[3]-bootY)*h/(box[3]-box[1]);
+  const steps=[walking?stride(phase,-1):{x:0,lift:0,angle:0},walking?stride(phase,1):{x:0,lift:0,angle:0}];
+  // Shoes attach at the ankle, and the overlapping cuffs conceal the joint.
+  for(const side of [-1,1])drawFoot(ctx,a,view,clothing,box,leg,w,bootY,bootH,side,steps[(side+1)/2],walking);
+  part(ctx,clothing.sheet,leg,a,-w/2,neck,w,h-bootH+1,[box[0],box[1],box[2],bootY+2]);
+  if(a.layer&&!view.rearward)prop(ctx,13+a.layer,-w*.38,neck+4,w*.76,h*.40);
+  wearPack(ctx,a,view,w,neck,false);
+  const skin=skinPalette[a.skin][1];
+  // Round hand ends sit inside the sleeve cuffs; skin follows the selected palette.
+  if(!view.rearward&&pose!=='read'){
+    for(const side of view.side?[-1]:[-1,1]){
+      const x=side*(w*.405), y=neck+h*(clothing.id==='coast-embroidered'?.37:.54);
+      oval(ctx,x,y,2.45,3.5,skin);
+    }
+  }
+  ctx.beginPath();ctx.roundRect(view.side?-3:-5,neck-5,view.side?8:10,8,3);
+  ctx.fillStyle=skin;ctx.fill();
+  return {neck,w,pageTurn};
+}
+function drawCharacter(canvas,a,inputPose,frame){
   const ctx=canvas.getContext('2d');
   const requested={left:'west',right:'east'}[canvas.dataset.direction]??canvas.dataset.direction??'south';
-  const direction=facings.includes(requested)?requested:'south';
-  const view={side:direction!=='south'&&direction!=='north',rearward:direction.startsWith('north'),oblique:direction.length>5};
-  const motion=actionStyle[pose]??{},wave=Math.sin(frame*(motion.pace??.16));
-  const step=wave*(motion.stride??0),bounce=(motion.bounce??Math.abs(step)*.57)*Math.abs(wave);
+  const view=rigView(facings.includes(requested)?requested:'south');
+  const pose=visibleMotion(inputPose);
   const height=[1,.932,1.07][a.height]+(a.tune?.height?.size??0)*.011;
   const width=[1,.87,1.143][a.body]+(a.tune?.body?.size??0)*.014;
-  ctx.setTransform(canvas.width/128,0,0,canvas.height/128,0,0);
-  ctx.clearRect(0,0,128,128);
+  ctx.setTransform(canvas.width/cell,0,0,canvas.height/cell,0,0);
+  ctx.clearRect(0,0,cell,cell);
   if(!sheets.every(name=>sheet(name).naturalWidth))return;
-  // Canvas 128 x 128. Ground contact y = 116. Body and head share the
-  // neck origin. Mirror the rig, not individual face layers.
-  const sleeping=pose==='sleep',mirror=direction.endsWith('west');
-  oval(ctx,64,sleeping?108:116,sleeping?41:20,3.5,'#47332236');
+  const step=pose==='walk'?Math.cos((frame%16)/16*Math.PI*2):0;
+  oval(ctx,64,groundY,20+Math.abs(step),3.2,'#47332236');
   ctx.save();
-  ctx.translate(sleeping?(mirror?19:109):64,sleeping?88:116-bounce);
-  const vertical=height*(motion.squat??1);
-  ctx.scale(mirror?-width:width,vertical);
-  ctx.rotate((motion.turn??0)+(motion.lean??0)+step*.01);
-  const neck=body(ctx,a,view,step);
-  const neckTone=skinPalette[a.skin][1];
-  ctx.beginPath();ctx.roundRect(view.side?-3:-5,neck-5,view.side?8:10,11,3);
-  ctx.fillStyle=neckTone;ctx.fill();
+  ctx.translate(64,groundY);
+  ctx.scale(view.mirror?-width:width,height);
+  const garment=body(ctx,a,view,pose,frame);
+  const breathe=Math.sin(frame*.085)*.64;
   ctx.save();
-  ctx.translate(0,neck+1);
-  if(pose==='read'||pose==='eat')ctx.rotate(.07*Math.abs(wave));
-  head(ctx,a,pose,frame%40>=38,view,sleeping?70:(116-bounce)/vertical+neck);
+  ctx.translate(step*.65,garment.neck+1+breathe);
+  ctx.rotate(pose==='read'?.085:step*.025);
+  head(ctx,a,pose,frame%43>=40,view,groundY/height+garment.neck);
   ctx.restore();
-  if(!view.rearward){
-    if(a.accessory===2)prop(ctx,9,-15,neck-2,30,26);
-    if(a.accessory===1||pose==='photo')prop(ctx,8,-12,pose==='photo'?neck-13+wave*2:neck+13,24,17);
-    if(pose==='drink'||pose==='eat') {
-      const y=neck+17-Math.max(0,wave)*9;
-      oval(ctx,9,y+4,8,4,'#8b5d3e');oval(ctx,9,y+1,7,4,pose==='drink'?'#f1dab4':'#d38756');
-    }
-    if(pose==='read'){
-      ctx.fillStyle='#f0e1bf';ctx.fillRect(-13,neck+15,26,14);
-      curve(ctx,0,neck+16,0,neck+21,0,neck+28,'#765d47',.9);
-    }
-  }
+  collarAndHolding(ctx,a,view,garment.w,garment.neck,pose,garment.pageTurn);
   ctx.restore();
-  if(pose==='sleep'||pose==='joy'||pose==='surprise'||pose==='climb'){
-    const point=pose==='sleep'?'…':pose==='joy'?'✦':pose==='climb'?'·':'!';
-    ctx.font='bold 14px serif';ctx.fillStyle=pose==='climb'?'#547e90':'#ac773d';
-    ctx.fillText(point,pose==='sleep'?(mirror?92:31):93+wave*2,pose==='sleep'?66:25+wave*2);
-  }
 }
 export function character(canvas,input,pose='look',frame=0){
   const a=appearance(input);
@@ -295,6 +405,6 @@ export function animateWorld(root,avatar,reduced){
   let frame=0;
   const draw=()=>portraits.forEach(canvas=>character(canvas,canvas._avatar??avatar,canvas.dataset.pose,frame));
   draw();if(reduced||!portraits.length)return ()=>{};
-  const timer=setInterval(()=>{if(!document.hidden){frame++;draw();}},105);
+  const timer=setInterval(()=>{if(!document.hidden){frame+=2;draw();}},72);
   return ()=>clearInterval(timer);
 }

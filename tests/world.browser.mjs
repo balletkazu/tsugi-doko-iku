@@ -52,10 +52,15 @@ try {
   await page.getByRole('button',{name:'髪・肌',exact:true}).tap();
   await page.getByRole('button',{name:'髪色',exact:true}).tap();
   await page.getByRole('button',{name:'亜麻',exact:true}).tap();
-  await page.getByRole('button',{name:'しぐさ',exact:true}).tap();
-  const poses=await page.locator('[data-fitting-value]').evaluateAll(nodes=>nodes.map(node=>node.dataset.fittingValue));
-  assert.equal(poses.length,12);
-  for(const value of poses)await page.locator('[data-fitting-value="'+value+'"]').tap();
+  assert.equal(await page.getByRole('button',{name:'しぐさ',exact:true}).count(),0);
+  await page.getByRole('button',{name:'服',exact:true}).tap();
+  await page.getByLabel('衣装の分類').selectOption('home');
+  await page.getByLabel('洋服を探す').fill('木綿');
+  await page.getByLabel('洋服を探す').press('Enter');
+  assert.equal(await page.locator('[data-fitting-value]').count(),1);
+  await page.getByRole('button',{name:'木綿の部屋着',exact:true}).tap();
+  await page.getByRole('button',{name:'小物',exact:true}).tap();
+  await page.getByRole('button',{name:'キャップ',exact:true}).tap();
   await page.getByRole('button',{name:'髪・肌',exact:true}).tap();
   await page.getByRole('button',{name:'髪色',exact:true}).tap();
   await shot('avatar');await page.getByText('この姿で家へ').tap();await page.getByRole('heading',{name:'はるの家'}).waitFor();
@@ -67,7 +72,7 @@ try {
   await page.getByText('旅の記録 0件').waitFor();
   await page.getByRole('link',{name:'訪問済み',exact:true}).tap();
   assert.equal(await page.locator('#pref-choice option').count(),47);await shot('atlas');
-  await page.getByText('この地域でできること').tap();await page.getByText('ここを散策する').tap();await page.getByText('京都府を散策').waitFor();await page.getByRole('button',{name:'カメラを構える'}).tap();await page.getByText('旅人は風景にカメラを向けました。').waitFor();
+  await page.getByText('この地域でできること').tap();await page.getByText('ここを散策する').tap();await page.getByText('京都府を散策').waitFor();await page.getByRole('button',{name:'景色を眺める'}).tap();await page.getByText('旅人は立ち止まって、風景を眺めました。').waitFor();
   await page.getByRole('link',{name:'自分の世界へ'}).tap();
   const tabs=page.getByRole('navigation',{name:'メインナビゲーション'});
   assert.deepEqual(await tabs.getByRole('link').allTextContents(),['自分の世界','みんなの旅','日本地図','旅の計画']);
@@ -154,28 +159,48 @@ try {
   // renderer, and save a contact sheet for manual visual review.
   await page.evaluate(async()=>{
     const {character,travelerAssets,facings}=await import('/traveler-art.js');
+    const {releasedMotions}=await import('/avatar-rig.js');
     await travelerAssets();
     const table=document.createElement('section');
     table.id='sprite-review';table.style.display='grid';table.style.gridTemplateColumns='repeat(4, 1fr)';table.style.background='#f4e8ce';
     document.querySelector('.atelier-view').after(table);
     for(const [index,skin] of [0,1,3,6,10,16,18,19].entries())for(const hat of [0,1,2,3,4]){
       const canvas=document.createElement('canvas');canvas.width=canvas.height=128;canvas.style.width='100%';
-      const look={design:2,skin,hat,hair:index*2,outfit:index,glasses:index%2?2:0,eyes:index%5,mouth:index%4,accessory:index%5};
+      const look={design:2,skin,hat,hair:index*2,outfit:index<4?index:index+4,shoes:index%4,glasses:index%2?2:0,eyes:index%5,mouth:index%4,accessory:index%5};
       character(canvas,look,'look',0);
       const cx=canvas.getContext('2d');
       const visible=Array.from(cx.getImageData(28,26,72,90).data).filter((v,i)=>i%4===3&&v>200).length;
       if(visible<1800)throw new Error('Sprite has incomplete face or body for '+JSON.stringify(look));
       table.append(canvas);
     }
-    for(const direction of facings)for(const pose of ['look','walk','sleep','joy']){
+    for(const direction of facings)for(const pose of releasedMotions){
       const canvas=document.createElement('canvas');canvas.width=canvas.height=128;canvas.style.width='100%';canvas.dataset.direction=direction;
-      character(canvas,{design:2,hair:9,outfit:7,skin:17,hat:3,glasses:1,accessory:1},pose,8);
+      character(canvas,{design:2,hair:9,outfit:8,skin:17,hat:3,shoes:1,glasses:1,accessory:1},pose,8);
       if(!canvas.getContext('2d').getImageData(0,0,128,128).data.some((v,i)=>i%4===3&&v===255))throw new Error('Empty sprite '+direction+' '+pose);
       table.append(canvas);
     }
+    for(const direction of facings)for(let hat=1;hat<=4;hat++){
+      const canvas=document.createElement('canvas');canvas.width=canvas.height=128;canvas.style.width='100%';canvas.dataset.direction=direction;
+      const look={design:2,hat,hair:14,outfit:10,shoes:3,glasses:2,bag:2};
+      character(canvas,look,'look',0);
+      const pixels=canvas.getContext('2d').getImageData(0,0,128,128).data;
+      if(!pixels.subarray(128*4*80).some((v,i)=>i%4===3&&v>240))throw new Error('Missing feet '+direction+' '+hat);
+      if(!pixels.subarray(128*4*5,128*4*33).some((v,i)=>i%4===3&&v>240))throw new Error('Missing headwear '+direction+' '+hat);
+      table.append(canvas);
+    }
+    const avatar={design:2,outfit:11,hair:14,hat:1};
+    const paused=document.createElement('canvas');paused.width=paused.height=128;
+    character(paused,avatar,'look',12);
+    const reference=paused.toDataURL();
+    character(paused,avatar,'sleep',12);
+    if(paused.toDataURL()!==reference)throw new Error('Unreleased animation was drawn');
   });
   if(process.env.ARTIFACT_DIR)await page.locator('#sprite-review').screenshot({path:process.env.ARTIFACT_DIR+'/sprite-combinations.png'});
   await page.locator('#sprite-review').evaluate(e=>e.remove());
+  await page.getByRole('navigation',{name:'選択肢のページ'}).getByRole('button',{name:'次へ'}).tap();
+  await page.getByRole('button',{name:'丸い短いカール',exact:true}).waitFor();
+  assert.ok(await page.locator('[data-fitting-value]').count()<=12);
+  await page.getByRole('navigation',{name:'選択肢のページ'}).getByRole('button',{name:'前へ'}).tap();
   await page.getByRole('button',{name:'肩までのボブ',exact:true}).tap();await shot('atelier');
   await page.getByRole('button',{name:'右へ回す'}).tap();await page.getByText('右斜め',{exact:true}).waitFor();
   await page.getByRole('button',{name:'右へ回す'}).tap();await page.getByText('右向き',{exact:true}).waitFor();
@@ -186,7 +211,11 @@ try {
   await page.getByRole('button',{name:/コーデを保存/}).tap();await page.getByText('コーデを保存しました。').waitFor();
   await page.getByRole('button',{name:'できあがり'}).tap();await page.getByRole('heading',{name:'はるの家'}).waitFor();
   await page.getByRole('button',{name:'家具を使う'}).tap();await page.getByRole('button',{name:'窓辺のベッド'}).tap();
-  await page.getByText('毛布にくるまって、ひと休み。').waitFor();await shot('house-play');
+  await page.getByText('ベッドのそばで、ひと休み。').waitFor();
+  await page.getByRole('button',{name:'家具を使う'}).tap();await page.getByRole('button',{name:'木の本棚'}).tap();
+  await page.getByText('旅の本をめくりました。').waitFor();if(process.env.ARTIFACT_DIR)await page.waitForTimeout(2000);await shot('house-play');
+  await visit('#avatar');await page.getByRole('button',{name:'服',exact:true}).tap();
+  assert.equal(await page.getByRole('button',{name:'木綿の部屋着'}).getAttribute('aria-pressed'),'true');
 
   await visit('#decorate/garden');
   const stage=page.locator('[data-home-view]');
@@ -241,8 +270,37 @@ try {
   await page.locator('[name=pref]').selectOption('JP-16');await page.getByLabel('訪ねた場所').fill('立山 室堂');
   await page.getByRole('button',{name:'記録を確認',exact:true}).tap();await page.getByRole('button',{name:'自分の体験として記録'}).tap();
   await page.getByText('雷鳥の小さな彫刻が図鑑に届きました。').waitFor();
+  await page.getByRole('link',{name:'届いた勲章を見る'}).tap();
+  assert.equal(await page.getByText('島風の旅人',{exact:true}).count(),0);
+  const mountain=page.locator('[data-medal="mountain-path"]');
+  await mountain.getByRole('button',{name:'勲章を受け取る'}).tap();
+  await mountain.getByRole('button',{name:'称号にする'}).tap();
+  await visit('#cottage');await page.locator('.house-title').getByText('風を聴く登山者').waitFor();
+  await visit('#activity');await page.getByText('ほかの体験').tap();await page.locator('[data-kind=nature]').tap();
+  await page.locator('[name=pref]').selectOption('JP-13');await page.getByLabel('訪ねた場所').fill('伊豆大島');
+  await page.getByRole('button',{name:'記録を確認',exact:true}).tap();
+  await page.getByRole('button',{name:'自分の体験として記録'}).tap();
+  await page.getByText('大島椿のピンが図鑑に届きました。').waitFor();
   await page.getByRole('link',{name:'図鑑をひらく'}).tap();
-  await page.getByText('1 / 8 種').waitFor();await shot('cabinet');
+  await page.getByText('2 / 12 種').waitFor();await shot('cabinet');
+  await page.getByLabel('図鑑で探す').fill('大島');
+  await page.getByRole('button',{name:'探す',exact:true}).tap();
+  await page.waitForFunction(()=>document.querySelectorAll('.cabinet-shelves article').length===1);
+  await page.getByRole('heading',{name:'大島椿のピン'}).waitFor();
+  await shot('cabinet-filtered');
+  await visit('#decorate/garden');
+  const pin=page.locator('[data-furnish="oshima-camellia"]');
+  await pin.tap();
+  const garden=page.locator('[data-home-view]');
+  await garden.focus();
+  await garden.press('ArrowDown');await garden.press('ArrowLeft');await garden.press('ArrowLeft');await garden.press('ArrowLeft');await garden.press('Enter');
+  await page.getByText('大島椿のピンを置きました。').waitFor();
+  await page.getByRole('button',{name:'配置を保存'}).tap();await page.waitForURL('**/#cottage/garden');
+  await visit('#avatar');await page.getByRole('button',{name:'小物',exact:true}).tap();
+  await page.getByRole('button',{name:'記念品',exact:true}).tap();await page.getByRole('button',{name:'大島椿のピン',exact:true}).tap();
+  await page.getByRole('button',{name:'できあがり'}).tap();await page.getByRole('heading',{name:'はるの家'}).waitFor();
+  await visit('#medals');await page.getByRole('heading',{name:'島風の旅人'}).waitFor();
+  await visit('#cabinet');
   await page.getByText('地元の話を書き添える').tap();
   await page.locator('#proposal-form [name=place]').fill('海辺の町');await page.getByLabel('品物や伝承の題名').fill('春の木舟');
   await page.getByLabel('伝えたいこと').fill('海辺の春の舟を描きたいです。');
@@ -279,5 +337,5 @@ try {
   await page.getByRole('heading',{name:'編集中の名前の家'}).waitFor();
   await ctx.setOffline(false);
   console.log('PASS a deployed update offers reload, preserves edits until the user saves, and keeps records on the new offline shell.');
-  assert.deepEqual(errors,[]);console.log('PASS four tabs and direct travel tools, 72 sprite combinations, touch placement and pinch, stamp books, real Toyama schedules and a shared map, private experience confirmation and rewards, companion practice and offline PWA.');
+  assert.deepEqual(errors,[]);console.log('PASS four tabs and direct travel tools, 104 sprite combinations, touch placement and pinch, stamp books, real Toyama schedules and a shared map, private experience confirmation and rewards, companion practice and offline PWA.');
 } finally {await browser.close();server.close();}

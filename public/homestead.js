@@ -1,7 +1,7 @@
-import {furniture as artBounds,souvenir as relicBounds} from './sprite-guides.js';
+import {furniture as artBounds,souvenir as relicBounds,regionalObjects} from './sprite-guides.js';
 import {escapeHtml as e} from './core.js';
 import {travelerAssets} from './traveler-art.js';
-import {relicIcons} from './cabinet.js';
+import {relicIcons} from './item-catalog.js';
 import {character,ornament} from './world-art.js';
 import {homeAreas,coverings,coveringsFor,homeProjection,furniture,homeStock,readHome,canPlace,footprint,homePath,around} from './home-layout.js';
 
@@ -9,11 +9,11 @@ const textures=['./assets/world/empty-room.webp','./assets/world/open-garden.web
 const furnitureSheet='./assets/atelier/furnishings.webp';
 const option=(key,label,pressed=false)=>`<button type="button" data-house="${key}" aria-pressed="${pressed}">${label}</button>`;
 const areaLink=(area,edit)=>`<a href="#${edit?'decorate':'cottage'}${area==='room'?'':'/'+area}">${homeAreas[area].name}</a>`;
-export function homesteadScreen(game,avatar,id,edit,guide=''){
+export function homesteadScreen(game,avatar,id,edit,guide='',title=''){
   const layout=readHome(game);
   const area=Object.hasOwn(homeAreas,id)&&(id==='room'||id==='garden'||layout.additions.includes(id))?id:'room';
   return `<section class="world home-play" data-homestead="${area}" data-edit="${edit}">
-    <header class="house-header"><a href="${edit?'#cottage':'#avatar'}" aria-label="${edit?'家に戻る':'着せ替え'}">${edit?'‹':'✦'}</a><div><h1>${edit?'模様替え':e(avatar.name)+'の家'}</h1></div>
+    <header class="house-header"><a href="${edit?'#cottage':'#avatar'}" aria-label="${edit?'家に戻る':'着せ替え'}">${edit?'‹':'✦'}</a><div><h1>${edit?'模様替え':e(avatar.name)+'の家'}</h1>${title?`<small class="house-title">${e(title)}</small>`:''}</div>
     ${edit?'<button type="button" class="house-save" data-house="save">配置を保存</button>':'<a class="house-save" href="#decorate'+(area==='room'?'':'/'+area)+'">模様替え</a>'}</header>
     <nav class="house-areas" aria-label="家と庭">${['room','garden',...layout.additions].map(zone=>areaLink(zone,edit)).join('')} ${edit&&layout.additions.length<2?`<button type="button" data-house="expand">＋ 広げる</button>`:''}</nav>
     <div class="house-stage"><canvas data-home-view aria-label="${homeAreas[area].name}の風景、家具、旅人。矢印キーで移動、Enterで決定" tabindex="0"></canvas>
@@ -51,8 +51,8 @@ export function mountHomestead(root,{game,avatar,reduced,commit,notify}){
   const dims={w:projection.width,h:projection.height};
   const initial={x:dims.w/2,y:dims.h*.50,z:1};
   let cam={...initial},view={w:1,h:1,ratio:1},mode='objects',drag=null,selected=null,armed=null,gesture=null;
-  let cursor=[...spec.arrival],actor=tileCenter(spec.arrival),cell=[...spec.arrival],pose='look',using=null,facing='south',animation=0,queue=[],pending=null,rest=0,raf=0,dirty=false,disposed=false,busy=false;
-  let picture=null,photoUrl=null,frame=0;
+  let cursor=[...spec.arrival],actor=tileCenter(spec.arrival),cell=[...spec.arrival],pose='look',facing='south',animation=0,queue=[],pending=null,rest=0,raf=0,dirty=false,disposed=false,busy=false;
+  let picture=null,photoUrl=null,frame=0,poseStart=0;
   const objects=()=>layout.items[area]??[];
   const zoom=()=>Math.max(view.h/dims.h,view.w/(dims.w*1.2))*cam.z;
   const screen=(x,y)=>[(x-cam.x)*zoom()+view.w/2,(y-cam.y)*zoom()+view.h/2];
@@ -63,6 +63,7 @@ export function mountHomestead(root,{game,avatar,reduced,commit,notify}){
   const background=image(textures[spec.outside?1:0],request);
   const sheet=image(furnitureSheet,()=>{if(!disposed){request();refreshTools();}});
   const relics=image('./assets/atelier/relics.webp',()=>{if(!disposed){request();refreshTools();}});
+  const regionArt=image('./assets/atelier/regional-objects.webp',()=>{if(!disposed){request();refreshTools();}});
   travelerAssets().then(request);
   function refreshPhoto(){
     if(photoUrl)URL.revokeObjectURL(photoUrl);
@@ -126,7 +127,8 @@ export function mountHomestead(root,{game,avatar,reduced,commit,notify}){
     const f=furniture(item.kind),[w,h]=footprint(item),rel=f.icon&&relicIcons[f.icon];
     const point=f.wall?wallPoint:ground,surface=f.flat||f.groundArt;
     const [x,y]=point([item.x+w/2,item.y+(surface||f.wall?h*.5:h-.12)]);
-    const box=Number.isInteger(f.art)?artBounds[f.art]:f.icon?relicBounds[rel]:[0,0,32,32];
+    const source=f.sheet==='regional-objects'?regionArt:sheet;
+    const box=Number.isInteger(f.art)?(source===regionArt?regionalObjects:artBounds)[f.art]:f.icon?relicBounds[rel]:[0,0,32,32];
     const assetRatio=(box[3]-box[1])/(box[2]-box[0]);
     const depth=(item.y+h)/spec.height;
     const cellWidth=projection.visible(depth)/spec.width;
@@ -143,7 +145,7 @@ export function mountHomestead(root,{game,avatar,reduced,commit,notify}){
     }
     ctx.translate(x,y);
     if(item.r===1||item.r===2)ctx.scale(-1,1);
-    if(Number.isInteger(f.art)&&loaded(sheet))paintSheet(ctx,f.art,-wide/2,top,wide,high,sheet,box);
+    if(Number.isInteger(f.art)&&loaded(source))paintSheet(ctx,f.art,-wide/2,top,wide,high,source,box);
     else if(f.icon&&loaded(relics))paintSheet(ctx,rel,-wide/2,top,wide,high,relics,box);
     else{ornament(fallback,item.kind);ctx.drawImage(fallback,-wide/2,top,wide,high);}
     ctx.restore();
@@ -164,22 +166,15 @@ export function mountHomestead(root,{game,avatar,reduced,commit,notify}){
       ctx.stroke();
     }
     const ordered=objects().filter(item=>drag?.item.id!==item.id).map(item=>({item,depth:furniture(item.kind).wall?-2:furniture(item.kind).flat?-1:item.y+footprint(item)[1]-.12}));
-    let stance=actor, depth=cellPoint(actor)[1];
-    if(using?.kind==='bed'&&pose==='sleep'){
-      const [w,h]=footprint(using),size=projection.visible((using.y+h)/spec.height)/spec.width;
-      stance=ground([using.x+w*.52,using.y+h-.12]);
-      stance[1]-=size*.52;
-      depth=using.y+h+.01;
-    }
-    if(!editing)ordered.push({depth});
+    if(!editing)ordered.push({depth:cellPoint(actor)[1]});
     ordered.sort((a,b)=>a.depth-b.depth);
     for(const layer of ordered){
       if(layer.item)itemSprite(layer.item);
       else{
         art.dataset.direction=facing;
-        character(art,avatar,pose,reduced?0:frame);
-        const size=projection.visible(cellPoint(stance)[1]/spec.height)/spec.width*1.22;
-        ctx.drawImage(art,stance[0]-size/2,stance[1]-size*116/128,size,size);
+        character(art,avatar,pose,reduced?0:pose==='read'?frame-poseStart:frame);
+        const size=projection.visible(cellPoint(actor)[1]/spec.height)/spec.width*1.22;
+        ctx.drawImage(art,actor[0]-size/2,actor[1]-size*116/128,size,size);
       }
     }
     if(drag)itemSprite(drag.item,{ghost:true,valid:canPlace(area,objects(),drag.item)});
@@ -211,7 +206,8 @@ export function mountHomestead(root,{game,avatar,reduced,commit,notify}){
     tools.innerHTML=`<div class="furniture-strip">${stock.map(kind=>`<button type="button" data-furnish="${kind}" aria-pressed="${armed===kind}"><canvas width="64" height="64" aria-hidden="true"></canvas>${e(furniture(kind).name)}</button>`).join('')}</div>${chosen?`<div class="furniture-actions"><span>${e(furniture(chosen.kind).name)}</span>${option('rotate','↻ 回す')}${option('remove','片づける')}</div>`:''}`;
     for(const button of tools.querySelectorAll('[data-furnish]')){
       const c=button.querySelector('canvas'),dest=c.getContext('2d'),f=furniture(button.dataset.furnish);
-      if(Number.isInteger(f.art)&&loaded(sheet))paintSheet(dest,f.art,0,0,64,64);
+      const source=f.sheet==='regional-objects'?regionArt:sheet;
+      if(Number.isInteger(f.art)&&loaded(source))paintSheet(dest,f.art,0,0,64,64,source);
       else if(f.icon&&loaded(relics))paintSheet(dest,relicIcons[f.icon],0,0,64,64,relics);
       else{ornament(fallback,button.dataset.furnish);dest.drawImage(fallback,0,0,64,64);}
     }
@@ -226,7 +222,7 @@ export function mountHomestead(root,{game,avatar,reduced,commit,notify}){
   function hit(x,y){return hits.findLast(({x1,x2,y1,y2,item})=>x>=x1&&x<=x2&&y>=y1&&y<=y2&&!furniture(item.kind).flat)?.item??
     hits.findLast(({x1,x2,y1,y2})=>x>=x1&&x<=x2&&y>=y1&&y<=y2)?.item;}
   function walk(point,item){
-    clearTimeout(rest);cancelAnimationFrame(animation);using=null;
+    clearTimeout(rest);cancelAnimationFrame(animation);
     const start=queue.length?toTile(actor):cell;
     const targets=item?(furniture(item.kind).wall?[[item.x,0],...around({...item,y:0})]:around(item)):[toTile(point)];
     const route=homePath(area,objects(),start,targets);
@@ -250,9 +246,10 @@ export function mountHomestead(root,{game,avatar,reduced,commit,notify}){
     animation=requestAnimationFrame(animate);
   }
   function arrived(){
-    const model=pending?furniture(pending.kind):null;using=pending;pending=null;pose=model?.pose??'look';
+    const model=pending?furniture(pending.kind):null;pending=null;pose=model?.pose??'look';
     tell(model?.line??(model?.name??''));request();
-    if(model?.pose)rest=setTimeout(()=>{using=null;pose='look';tell('');request();},4600);
+    if(pose==='read'){facing='south';poseStart=frame;}
+    if(model?.pose)rest=setTimeout(()=>{pose='look';tell('');request();},4600);
   }
   function finishDrag(p){
     if(!drag)return;
@@ -302,7 +299,7 @@ export function mountHomestead(root,{game,avatar,reduced,commit,notify}){
     }
     const target=hit(...point);
     if(!editing&&!target&&Math.abs(point[0]-actor[0])<24&&point[1]>=actor[1]-63&&point[1]<=actor[1]+6){
-      clearTimeout(rest);pose='joy';tell(avatar.name+'が手を振りました。');request();
+      clearTimeout(rest);pose='joy';tell(avatar.name+'がにっこりしました。');request();
       rest=setTimeout(()=>{pose='look';tell('');request();},1800);return;
     }
     if(!editing)walk(point,target);

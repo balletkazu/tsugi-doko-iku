@@ -1,4 +1,5 @@
 import { icon, link, page } from './ui.js';
+import {milestones,medalEarned,selectedTitle} from './medals.js';
 
 const objects = [
   ['globe','地球儀','旅先を探す','#discover'], ['shelf','本棚','日記と旅の栞','#my?view=list'],
@@ -28,32 +29,23 @@ export function roomSettings(profile) {
     <div class="actions"><button class="button">設定を保存</button>${link('#cottage','自分の世界へ','back','text-link')}</div></form>`,{narrow:true});
 }
 
-function realStampCount(profile){
-  const keys=new Set(Object.keys(profile.stamps??{}));
-  for(const [key,entries] of Object.entries(profile.visits??{}))if(entries.some(x=>x.kind==='self'||x.kind==='gps'))keys.add(key);
-  return keys.size;
-}
-export const milestones = [
-  {id:'first-stamp',name:'旅のはじまり',detail:'スタンプを1個押す', isEarned:profile=>realStampCount(profile) >= 1},
-  {id:'three-stamps',name:'あちこち旅する人',detail:'スタンプを3個押す', isEarned:profile=>realStampCount(profile) >= 3},
-  {id:'first-booklet',name:'小さな旅の支度',detail:'旅の栞を1冊保存する', isEarned:(_profile,data)=>data.trips.length >= 1}
-];
-
-export function medalPage(profile,data) {
-  return page('旅のメダル','旅を重ねて見つけた、自分だけの記念。',`<div class="medal-list">
-    ${milestones.map(medal=>{
+export function medalPage(profile,data,game) {
+  return page('旅の勲章と称号','旅の途中で生まれた、自分だけの記念。',`<div class="medal-list">
+    ${milestones.filter(medal=>!medal.hidden||medalEarned(medal,profile,data,game)).map(medal=>{
       const claimed = (profile.medals ?? []).includes(medal.id);
-      const earned = medal.isEarned(profile,data);
-      return `<article data-medal="${medal.id}" class="surface medal-card${claimed?' obtained':''}"><span class="medal-icon" aria-hidden="true">${icon('stamp')}</span>
-        <h2>${medal.name}</h2><p>${medal.detail}</p>${claimed ? '<small>受け取り済み</small>' : earned ?
-          `<button type="button" class="button" data-action="claim-medal" data-id="${medal.id}">メダルを受け取る</button>` : '<small>まだ受け取れません</small>'}</article>`;
-    }).join('')}</div><p>${link('#cottage','自分の世界へ','back','text-link')}</p>`);
+      const earned = medalEarned(medal,profile,data,game);
+      const wearing=profile.title===medal.id;
+      return `<article data-medal="${medal.id}" data-theme="${medal.theme}" class="surface medal-card${claimed?' obtained':''}"><span class="medal-icon" aria-hidden="true">${icon('stamp')}</span>
+        <small>${medal.theme}</small><h2>${medal.name}</h2><p>${medal.detail}</p>
+        ${claimed ? `<button type="button" class="button button-outline" aria-pressed="${wearing}" data-action="wear-title" data-id="${medal.id}">${wearing?'称号を外す':'称号にする'}</button>` : earned ?
+          `<button type="button" class="button" data-action="claim-medal" data-id="${medal.id}">勲章を受け取る</button>` : '<small>まだ受け取れません</small>'}</article>`;
+    }).join('')}</div><p class="muted">${selectedTitle(profile)?'使用中の称号　'+selectedTitle(profile):''}</p><p>${link('#cottage','自分の世界へ','back','text-link')}</p>`);
 }
 
-export function mailbox(profile,data) {
-  const available = milestones.filter(m=>m.isEarned(profile,data) && !(profile.medals ?? []).includes(m.id));
+export function mailbox(profile,data,game) {
+  const available = milestones.filter(m=>medalEarned(m,profile,data,game) && !(profile.medals ?? []).includes(m.id));
   return page('郵便受け','旅の部屋に届くお知らせ。',`<div class="surface flow">
-    ${available.length ? `<h2>メダルが届きました</h2><ul>${available.map(m=>`<li>${m.name}</li>`).join('')}</ul>${link('#medals','メダルを見に行く','arrow')}` : '<p>新しいお知らせはありません。</p>'}
+    ${available.length ? `<h2>勲章が届きました</h2><ul>${available.map(m=>`<li>${m.name}</li>`).join('')}</ul>${link('#medals','勲章を見に行く','arrow')}` : '<p>新しいお知らせはありません。</p>'}
     <p class="muted">この版には部屋で獲得した記念のお知らせが届きます。旅人どうしの通知は準備中です。</p>
     ${link('#cottage','自分の世界へ','back','text-link')}</div>`,{narrow:true});
 }

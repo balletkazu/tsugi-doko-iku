@@ -3,12 +3,15 @@ import {entryKinds} from './stamp-book.js';
 import {icon} from './ui.js';
 import {places} from './data.js';
 import {update,importPhoto} from './storage.js';
-import {avatarDefaults,avatarFrom,activities,prefectures,regions,inventory,items,estimateActivity,newEntry} from './world-data.js';
+import {avatarDefaults,avatarFrom,saveAppearance,activities,prefectures,regions,inventory,items,estimateActivity,newEntry} from './world-data.js';
 import {homesteadScreen,mountHomestead} from './homestead.js';
 import {readHome,validateHome} from './home-layout.js';
 import {cabinetScreen,proposal,exportProposal,relicArt} from './cabinet.js';
-import {keepsakesFor,regionalItems,eventFor} from './regional-data.js';
+import {keepsakesFor,eventFor} from './regional-data.js';
+import {keepEarnedMedals,selectedTitle} from './medals.js';
+import {collectionItem} from './item-catalog.js';
 import {travelerAssets} from './traveler-art.js';
+import {visibleMotion} from './avatar-rig.js';
 import {dressingRoom,mountDressing} from './dressing-room.js';
 import {gameStage,mountStage} from './game-stage.js';
 import {animateWorld,character} from './world-art.js';
@@ -35,7 +38,7 @@ const entryText=(entry)=>`${where(entry)}で${activities[entry.activity][0]}を�
 
 export function createWorld(root,{go,notify,profile,records,onRecords}){
   let game={},clean=()=>{},busy=false,detected=null,stopLocation=()=>{},stopMotion=()=>{},motionActive=false,motionHint='';
-  const avatar=()=>({...avatarFrom(game.avatar??avatarDefaults),pin:inventory(game).includes(game.pin)?game.pin:null});
+  const avatar=()=>({...avatarFrom(game.avatar??avatarDefaults),pin:collectionItem(game.pin)?.wear&&inventory(game).includes(game.pin)?game.pin:null});
   const entries=()=>game.entries??[];
   const save=async(change,done)=>{
     if(busy)return;
@@ -52,11 +55,11 @@ export function createWorld(root,{go,notify,profile,records,onRecords}){
     return gameStage('street','風待ちの街',avatar());
   }
   function editor(guided){
-    return dressingRoom(avatar(),inventory(game).filter(id=>!['books','plant'].includes(id)),guided);
+    return dressingRoom(avatar(),inventory(game).filter(id=>collectionItem(id)?.wear),guided);
   }
   function cottage(id,guided){
     const guide=guided?`<section class="stage-guide"><p>${guideText[2]}</p><div class="world-actions">${a('#atlas?guide=1','地図をひらく　→','world-btn')}${guideFooter()}</div></section>`:'';
-    return homesteadScreen(game,avatar(),id,false,guide);
+    return homesteadScreen(game,avatar(),id,false,guide,selectedTitle(profile()));
   }
   function episode(id){
     const record=entries().find(entry=>entry.id===id);
@@ -64,9 +67,9 @@ export function createWorld(root,{go,notify,profile,records,onRecords}){
     if(!record)return '';
     const [title,description,,hint]=event??['旅の思い出が届きました','絵日記にこの日の思い出を残しました。'];
     const receipt=record.reward;
-    const relief=(receipt?.finds??record.finds??[]).map(key=>regionalItems[key]).filter(Boolean);
-    return `<section class="episode">${person(!receipt||receipt.item||receipt.coins||relief.length?'joy':'look')}<div><h2>${title}</h2><p>${description}</p>
-      ${receipt?.item||receipt?.coins?`<p class="episode-reward">${receipt.item?e(items[receipt.item]):''}${receipt.item&&receipt.coins?' · ':''}${receipt.coins?receipt.coins+' 旅コイン':''}を受け取りました。</p>`:''}${hint?`<small>${hint}</small>`:''}${relief.map(item=>`<div class="episode-keepsake">${relicArt(item)}<span>${e(item.name)}が図鑑に届きました。</span></div>`).join('')}</div>${relief.length?a('#cabinet','図鑑をひらく','world-text'):''}</section>`;
+    const relief=(receipt?.finds??record.finds??[]).map(collectionItem).filter(Boolean);
+    return `<section class="episode">${person(!receipt||receipt.item||receipt.coins||receipt.medals?.length||relief.length?'joy':'look')}<div><h2>${title}</h2><p>${description}</p>
+      ${receipt?.item||receipt?.coins?`<p class="episode-reward">${receipt.item?e(items[receipt.item]):''}${receipt.item&&receipt.coins?' · ':''}${receipt.coins?receipt.coins+' 旅コイン':''}を受け取りました。</p>`:''}${hint?`<small>${hint}</small>`:''}${relief.map(item=>`<div class="episode-keepsake">${relicArt(item)}<span>${e(item.name)}が図鑑に届きました。</span></div>`).join('')}</div>${relief.length?a('#cabinet','図鑑をひらく','world-text'):''}${receipt?.medals?.length?a('#medals','届いた勲章を見る','world-text'):''}</section>`;
   }
   const mapFilters={visited:'訪問済み',saved:'行きたい場所',journal:'旅の記録'};
   function journalsFor(pref){
@@ -106,7 +109,7 @@ export function createWorld(root,{go,notify,profile,records,onRecords}){
   }
   function trail(id){
     const p=byId(id)??prefectures[15];
-    return frame('仮想の旅',p.name+'を散策',art('trail',characterSpot('walk'),({'北海道':'north','東北':'north','関東':'spring','中部':'spring','近畿':'maple','中国':'maple','四国':'island','九州・沖縄':'island'})[p.region])+`<div class="world-actions">${[['walk','小道を歩く'],['photo','カメラを構える'],['sit','ひと休み']].map(([pose,label])=>`<button type="button" class="world-btn alt" data-world="field-action" data-pose="${pose}">${label}</button>`).join('')}</div><p id="field-voice" role="status"></p><section class="letter"><div class="stamp-row">${stamp(p.name)}<div><small>散策のしるし</small><h2>${p.name}の一頁</h2></div></div><p>地方と四季をもとに描いた創作の風景です。この印は仮想の旅の記録です。</p><div class="world-actions">${a('#atlas?pref='+p.id,'地図に戻る','world-btn')}${a('#cottage','自分の世界へ')}</div></section>`);
+    return frame('仮想の旅',p.name+'を散策',art('trail',characterSpot('walk'),({'北海道':'north','東北':'north','関東':'spring','中部':'spring','近畿':'maple','中国':'maple','四国':'island','九州・沖縄':'island'})[p.region])+`<div class="world-actions">${[['walk','小道を歩く'],['look','景色を眺める']].map(([pose,label])=>`<button type="button" class="world-btn alt" data-world="field-action" data-pose="${pose}">${label}</button>`).join('')}</div><p id="field-voice" role="status"></p><section class="letter"><div class="stamp-row">${stamp(p.name)}<div><small>散策のしるし</small><h2>${p.name}の一頁</h2></div></div><p>地方と四季をもとに描いた創作の風景です。この印は仮想の旅の記録です。</p><div class="world-actions">${a('#atlas?pref='+p.id,'地図に戻る','world-btn')}${a('#cottage','自分の世界へ')}</div></section>`);
   }
   function activity(){
     const artId={walk:6,hike:4,tour:5,photo:7,cafe:7,meal:0,spa:6,beach:6};
@@ -157,9 +160,9 @@ export function createWorld(root,{go,notify,profile,records,onRecords}){
   function renderActivity(id,tentative=false){
     const c=root.querySelector('.activity-preview canvas');if(!c)return;
     c.parentElement.hidden=!id;
-    c.dataset.pose=activities[id]?.[1]??'look';c.dataset.activity=id;
+    c.dataset.pose=visibleMotion(activities[id]?.[1]);c.dataset.activity=id;
     character(c,avatar(),c.dataset.pose,0,id);
-    root.querySelector('#activity-label').textContent=activities[id]?(tentative?`旅人の動きの候補「${activities[id][0]}」。`:`旅人も「${activities[id][0]}」を体験します。`):'体験を選ぶと、旅人も動きます。';
+    root.querySelector('#activity-label').textContent=activities[id]?(tentative?`旅人の動きの候補「${activities[id][0]}」。`:`「${activities[id][0]}」を記録します。`):'体験を選ぶと、旅人も動きます。';
   }
   async function motion(button){
     if(motionActive){stopMotion();return;}
@@ -225,7 +228,7 @@ export function createWorld(root,{go,notify,profile,records,onRecords}){
     const actor=root.querySelector('.stage-player canvas');
     if(actor)actor._avatar=avatar();
     const closeDressing=mountDressing(root,avatar(),{reduced,looks:game.looks??[],saveLook:async draft=>{
-      game=await update('world',(latest={})=>({...latest,looks:[{...avatarFrom(draft),pin:draft.pin},...(latest.looks??[])].slice(0,6)}));
+      game=await update('world',(latest={})=>({...latest,looks:[{...saveAppearance(draft),pin:draft.pin},...(latest.looks??[])].slice(0,6)}));
       return game.looks;
     }});
     const hash=location.hash;
@@ -275,7 +278,7 @@ export function createWorld(root,{go,notify,profile,records,onRecords}){
       },()=>afterSave('#companions'));
       return;
     }
-    if(form.id==='cabinet-search'){go('#cabinet?'+new URLSearchParams({q:fields.get('q')}));return;}
+    if(form.id==='cabinet-search'){event.preventDefault();go('#cabinet?'+new URLSearchParams({q:fields.get('q'),kind:fields.get('kind')}));return;}
     if(form.id==='proposal-form'){
       try{
         const draft=proposal(fields);
@@ -302,7 +305,7 @@ export function createWorld(root,{go,notify,profile,records,onRecords}){
       }catch(error){notify(error.message);}
       return;
     }
-    if(form.id==='avatar-form'){const draft=form.readAppearance();const who=avatarFrom(draft);const pin=draft.pin;await save(g=>({...g,avatar:who,pin:inventory(g).includes(pin)?pin:null}),()=>afterSave(form.dataset.guide==='true'?'#cottage?guide=1':'#cottage'));return;}
+    if(form.id==='avatar-form'){const draft=form.readAppearance();const who=saveAppearance(draft);const pin=draft.pin;await save(g=>({...g,avatar:who,pin:collectionItem(pin)?.wear&&inventory(g).includes(pin)?pin:null}),()=>afterSave(form.dataset.guide==='true'?'#cottage?guide=1':'#cottage'));return;}
     if(form.dataset.saving || !form.querySelector('dialog')?.open)return;
     const subject=fields.get('activity'),file=fields.get('photo'),button=event.submitter;form.dataset.saving='1';if(button)button.disabled=true;
     try{
@@ -320,7 +323,10 @@ export function createWorld(root,{go,notify,profile,records,onRecords}){
         const newCoins=reward(oldCoins,'trip:'+dateInJapan(new Date(entry.date))+':'+entry.activity,12,'現実の旅の記録');
         const item=activities[entry.activity][2];
         const receipt={item:inventory(g).includes(item)?null:item,coins:oldCoins===newCoins?0:12,finds:finds.filter(id=>!owned.includes(id))};
-        return {...g,entries:[{...entry,reward:receipt},...prior],localFinds:[...new Set([...owned,...finds])],economy:newCoins};
+        const previous=keepEarnedMedals(g,profile(),records());
+        const next=keepEarnedMedals({...g,entries:[{...entry,reward:receipt},...prior],localFinds:[...new Set([...owned,...finds])],economy:newCoins},profile(),records());
+        receipt.medals=next.earnedMedals.filter(id=>!previous.earnedMedals.includes(id));
+        return next;
       },()=>{if(form.isConnected)go('#memories?event='+entry.id);notify('絵日記に保存しました。');});
     }catch(err){notify(err.message);}finally{delete form.dataset.saving;if(button)button.disabled=false;}
   });
@@ -336,7 +342,7 @@ export function createWorld(root,{go,notify,profile,records,onRecords}){
       },()=>go('#companions'));break;
       case 'thank-companions':await save(g=>{const trips=lifeTrips(g);return {...g,companions:{...trips,thanks:[...new Set([...trips.thanks,b.dataset.id])]}};},()=>go('#companions'));break;
       case 'demo-postcard':try{await downloadCompanionPostcard(b.closest('.companion-postcard'));}catch(error){notify(error.message);}break;
-      case 'field-action':{const c=root.querySelector('.scene-person canvas');const pose=b.dataset.pose;c.dataset.pose=pose;character(c,avatar(),pose);root.querySelector('#field-voice').textContent={walk:'小道に足を進めました。',photo:'旅人は風景にカメラを向けました。',sit:'腰を下ろして、景色を眺めています。'}[pose];break;}
+      case 'field-action':{const c=root.querySelector('.scene-person canvas');const pose=b.dataset.pose;c.dataset.pose=pose;character(c,avatar(),pose);root.querySelector('#field-voice').textContent={walk:'小道に足を進めました。',look:'旅人は立ち止まって、風景を眺めました。'}[pose];break;}
       case 'skip':await save(g=>({...g,started:true}),()=>go('#cottage'));break;
       case 'explore':{playRoomSound(profile(),'stamp');const id=root.querySelector('#pref-choice').value;await save(g=>({...g,started:true,lastPref:id,explored:[...new Set([...(g.explored??[]),id])]}),()=>go('#trail/'+id));break;}
       case 'motion':await motion(b);break;

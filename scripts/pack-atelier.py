@@ -20,6 +20,10 @@ SPRITES = {
     "details": (4, 4, 110, 100, 122),
     "furnishings": (4, 4, 117, 118, 122),
     "relics": (4, 2, 111, 105, 122),
+    "headwear": (4, 4, 114, 103, 119),
+    "wardrobe": (4, 4, 103, 109, 117),
+    "footwear": (4, 3, 110, 95, 117),
+    "regional-objects": (2, 2, 111, 107, 122),
 }
 
 
@@ -46,6 +50,9 @@ def pack(input_file, target, kind):
             round((x + 1) * image.width / columns) - 3,
             round((y + 1) * image.height / rows) - 3,
         )))
+        # The directional cap art is supplied facing left in columns 1 and 2.
+        if kind == "headwear" and index in (9, 10):
+            sprite = sprite.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
         alpha = sprite.getchannel("A")
         box = alpha.point(lambda pixel: 255 if pixel > 200 else 0).getbbox()
         if not box:
