@@ -14,8 +14,11 @@ const paths = files.filter(file => file.isFile())
   .sort();
 const hash = createHash('sha256');
 for (const path of paths) hash.update(await readFile(new URL(path, dist)));
+const version = hash.digest('hex').slice(0, 16);
+const index = new URL('index.html', dist);
+await writeFile(index, (await readFile(index, 'utf8')).replace('__CACHE_VERSION__', version));
 const worker = await readFile(new URL('sw.js', dist), 'utf8');
 await writeFile(new URL('sw.js', dist), worker
-  .replace('__CACHE_VERSION__', hash.digest('hex').slice(0, 16))
+  .replace('__CACHE_VERSION__', version)
   .replace('/* PRECACHE */ []', JSON.stringify(paths.filter(path => path !== './sw.js'))));
 console.log(`Built ${paths.length} app files in dist/`);

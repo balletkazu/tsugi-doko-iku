@@ -68,7 +68,8 @@ test('production build creates a versioned, resolvable offline cache', () => {
   const root = new URL('../',import.meta.url);
   const dist = new URL('dist/',root);
   const worker = readFileSync(new URL('sw.js',dist),'utf8');
-  assert.match(worker,/tsugi-preview-[a-f0-9]{16}/);
+  const version = worker.match(/^const version = '([a-f0-9]{16})';$/m)?.[1];
+  assert.ok(version);
   const [,entries] = worker.match(/^const assets = (.+);$/m);
   const precache = JSON.parse(entries);
   assert.ok(precache.includes('./index.html') && precache.includes('./app.js'));
@@ -79,6 +80,7 @@ test('production build creates a versioned, resolvable offline cache', () => {
   }
   const html = readFileSync(new URL('index.html',dist),'utf8');
   assert.match(html,/<html lang="ja">/);
+  assert.ok(html.includes(`<meta name="app-version" content="${version}">`));
   assert.match(html,/rel="manifest"/);
 });
 

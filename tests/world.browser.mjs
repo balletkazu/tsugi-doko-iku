@@ -9,10 +9,17 @@ const types={'.html':'text/html; charset=utf-8','.css':'text/css','.js':'text/ja
 // Fixture tiles keep this interaction test reproducible offline.
 const {headers:rules}=JSON.parse(await readFile(new URL('vercel.json',project),'utf8'));
 const headers=Object.fromEntries(rules[0].headers.map(({key,value})=>[key,value]));
+const nextVersion='fedcba9876543210';
+let secondRelease=false;
 const server=createServer(async (req,res)=>{
   const path=new URL(req.url,'http://127.0.0.2').pathname;
   const name=path==='/'?'index.html':path.slice(1);
-  try {const bytes=await readFile(new URL(`dist/${name}`,project));res.writeHead(200,{...headers,'Content-Type':types[extname(name)] ?? 'application/octet-stream'});res.end(bytes);}
+  try {
+    let bytes=await readFile(new URL(`dist/${name}`,project));
+    if(secondRelease&&name==='sw.js')bytes=bytes.toString().replace(/const version = '[a-f0-9]{16}';/,`const version = '${nextVersion}';`);
+    if(secondRelease&&name==='index.html')bytes=bytes.toString().replace(/name="app-version" content="[a-f0-9]{16}"/,`name="app-version" content="${nextVersion}"`);
+    res.writeHead(200,{...headers,'Content-Type':types[extname(name)] ?? 'application/octet-stream'});res.end(bytes);
+  }
   catch {if (!res.headersSent) res.writeHead(404); res.end();}
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.2',resolve));
@@ -243,5 +250,34 @@ try {
   const proposalDownload=page.waitForEvent('download');await page.getByRole('button',{name:'書き出す'}).tap();
   assert.match((await proposalDownload).suggestedFilename(),/txt$/);
   const ctx2=await browser.newContext({viewport:{width:320,height:680},reducedMotion:'reduce'});const denied=await ctx2.newPage();await denied.addInitScript(()=>{Object.defineProperty(navigator,'geolocation',{value:{watchPosition(_ok,fail){setTimeout(fail,10);return 3;},clearWatch(){}}});});await denied.goto(origin+'#activity');await denied.getByText('現在地から候補を探す').click();await denied.getByText('位置情報を取得できません。手入力で記録できます。').waitFor();await ctx2.close();
+  await visit('#avatar');
+  const version=page.locator('meta[name="app-version"]'), name=page.getByLabel('旅人の名前');
+  const oldVersion=await version.getAttribute('content');
+  const notice=page.getByRole('complementary',{name:'アプリの更新'});
+  assert.equal(await notice.isVisible(),false);
+  const otherTab=await ctx.newPage();
+  await otherTab.goto(origin+'#cottage');
+  await otherTab.getByRole('heading',{name:'はるの家'}).waitFor();
+  await name.fill('編集中の名前');
+  secondRelease=true;
+  await page.evaluate(async()=>{const registration=await navigator.serviceWorker.ready;await registration.update();});
+  await notice.waitFor();
+  assert.equal(await version.getAttribute('content'),oldVersion);
+  assert.equal(await name.inputValue(),'編集中の名前');
+  await notice.getByRole('button',{name:'あとで'}).tap();
+  await notice.waitFor({state:'hidden'});
+  await page.getByRole('button',{name:'できあがり'}).tap();
+  await page.getByRole('heading',{name:'編集中の名前の家'}).waitFor();
+  await otherTab.getByRole('button',{name:'最新版を表示'}).tap();
+  await otherTab.getByRole('heading',{name:'編集中の名前の家'}).waitFor();
+  assert.equal(await otherTab.locator('meta[name="app-version"]').getAttribute('content'),nextVersion);
+  await otherTab.close();
+  await page.reload();
+  assert.equal(await version.getAttribute('content'),nextVersion);
+  await page.getByRole('heading',{name:'編集中の名前の家'}).waitFor();
+  await ctx.setOffline(true);await page.reload();
+  await page.getByRole('heading',{name:'編集中の名前の家'}).waitFor();
+  await ctx.setOffline(false);
+  console.log('PASS a deployed update offers reload, preserves edits until the user saves, and keeps records on the new offline shell.');
   assert.deepEqual(errors,[]);console.log('PASS four tabs and direct travel tools, 72 sprite combinations, touch placement and pinch, stamp books, real Toyama schedules and a shared map, private experience confirmation and rewards, companion practice and offline PWA.');
 } finally {await browser.close();server.close();}

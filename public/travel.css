@@ -1,4 +1,7 @@
 html{scroll-padding-bottom:calc(65px + env(safe-area-inset-bottom))}
+.app-update{position:fixed;z-index:9;left:50%;bottom:calc(67px + env(safe-area-inset-bottom));transform:translateX(-50%);width:min(calc(100% - 24px),420px);padding:9px 12px;border:1px solid #aeab92;border-radius:10px;background:#fffcf1;color:#304c40;box-shadow:0 4px 17px #2d36252c}
+.app-update p{margin:0 0 6px;font-size:.83rem;line-height:1.5}
+.app-update button{min-height:42px;margin-right:8px;font-size:.82rem}
 /* The same four destinations remain in reach throughout both worlds. */
 body,body.game-view{padding-bottom:calc(62px + env(safe-area-inset-bottom))}
 body .navigation,body.game-view .navigation{

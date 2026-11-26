@@ -495,5 +495,27 @@ try {
 }
 render();
 if ('serviceWorker' in navigator && !['localhost','127.0.0.1'].includes(location.hostname)) {
-  navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  const workers = navigator.serviceWorker;
+  const version = document.querySelector('meta[name="app-version"]').content;
+  const updateNotice = document.querySelector('#app-update');
+  const askVersion = () => workers.controller?.postMessage('app-version');
+  let dismissedVersion;
+  workers.addEventListener('message',event=>{
+    if(event.source!==workers.controller) return;
+    const nextVersion = event.data?.appVersion;
+    if(typeof nextVersion!=='string' || nextVersion===version || nextVersion===dismissedVersion) return;
+    updateNotice.hidden = false;
+    document.querySelector('#app-update-later').onclick = ()=>{
+      dismissedVersion = nextVersion;
+      updateNotice.hidden = true;
+    };
+  });
+  document.querySelector('#app-update-show').onclick = ()=>location.reload();
+  workers.addEventListener('controllerchange',askVersion);
+  workers.register('./sw.js',{updateViaCache:'none'}).then(registration=>{
+    askVersion();
+    document.addEventListener('visibilitychange',()=>{
+      if(!document.hidden) registration.update().catch(()=>{});
+    });
+  }).catch(()=>{});
 }
