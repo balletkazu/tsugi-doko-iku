@@ -473,3 +473,16 @@ test('the build indexes lazy assets without adding them to the installation down
   assert.ok(catalog['./assets/catalog/head-cuts-a-v1.webp']);
   assert.ok(entries.includes('./assets/atelier/head-core-map.webp'));
 });
+
+test('reference wardrobe selects authored views and shares stable attachment sockets',async()=>{
+  const {turnSequence,approvedTurns,authoredTurn,resolvedTurn,equipmentSlots,bodyFrame,sockets}=await import('../public/avatar-frame.js');
+  assert.deepEqual(approvedTurns({hair:8,outfit:0}),turnSequence);
+  assert.deepEqual(turnSequence.map(item=>authoredTurn(item).index),[0,1,2,3,4,3,2,1]);
+  assert.equal(resolvedTurn({hair:8,outfit:2},'northeast'),'south');
+  assert.equal(resolvedTurn({hair:8,outfit:11},'northeast'),'north');
+  assert.equal(resolvedTurn({hair:0,outfit:0,shoes:3},'northwest'),'north');
+  assert.deepEqual(equipmentSlots({bag:0,accessory:0}),{head:null,eyes:null,back:null,shoes:null,neck:null,ear:false,hair:false,lapel:null});
+  const p=bodyFrame(1),gear=sockets({outfit:1},p);
+  assert.ok(gear.camera[1]>gear.cameraRoots[0][1]&&gear.shoulder[0][1]<gear.camera[1]);
+  assert.equal(equipmentSlots({accessory:4}).neck,null);
+});

@@ -3,6 +3,8 @@ import {parts,items,avatarFrom} from './world-data.js';
 import {facings,character,travelerAssets} from './traveler-art.js';
 import {hairPalette,skinPalette,clothPalette,tuningParts,tuningFields} from './avatar-palette.js';
 import {searchStyles,styleGroupNames} from './style-catalog.js';
+import {approvedTurns,resolvedTurn} from './avatar-frame.js';
+import {fitPortrait} from './portrait-resolution.js';
 
 const groups=[
   ['hair','髪・肌',['hair','hairColor','skin']],
@@ -13,7 +15,6 @@ const groups=[
 ];
 const labels={pin:'記念品'};
 const directions=['正面','背面','右向き','左向き','右斜め','左斜め','右斜め後ろ','左斜め後ろ'];
-const sequence=['south','southeast','east','northeast','north','northwest','west','southwest'];
 const swatches={hairColor:hairPalette,skin:skinPalette,clothColor:clothPalette};
 const searchable=new Set(['hair','outfit']);
 const faceParts=new Set(['face','eyes','brows','nose','mouth','ears','beard','hair']);
@@ -22,7 +23,7 @@ export function dressingRoom(avatar,owned,guided){
   return `<section class="world dressing atelier"><form id="avatar-form" data-guide="${guided}">
     <header class="dressing-header"><a href="${guided?'#welcome':'#cottage'}" aria-label="戻る">‹</a><h1>旅人の身支度</h1><button class="world-btn">${guided?'この姿で家へ':'できあがり'}</button></header>
     <div class="atelier-view">
-      <button type="button" class="atelier-hero" data-studio="greet" aria-label="旅人に話しかける"><canvas aria-label="選んだ旅人の全身" role="img" data-person data-doll data-pose="look" width="160" height="160"></canvas></button>
+      <button type="button" class="atelier-hero" data-studio="greet" aria-label="旅人に話しかける"><canvas aria-label="選んだ旅人の全身" role="img" data-person data-doll data-pose="look" width="256" height="256"></canvas></button>
       <div class="atelier-controls"><button type="button" data-studio="previous" aria-label="左へ回す">↶</button><span data-facing>正面</span><button type="button" data-studio="next" aria-label="右へ回す">↷</button></div>
       <label class="atelier-name">名前<input name="name" aria-label="旅人の名前" required maxlength="24" value="${e(avatar.name)}"></label>
       <p class="atelier-note" role="status"></p>
@@ -45,7 +46,7 @@ export function mountDressing(root,initial,{looks=[],saveLook}={}){
   const filters={hair:{query:'',group:''},outfit:{query:'',group:''}};
   let offset=0;
   const owned=[...root.querySelector('[data-fitting-owned]').content.children].map(node=>node.dataset.id);
-  let draft={...avatarFrom(initial),pin:initial.pin}, group=groups[0],part=group[2][0],direction=0;
+  let draft={...avatarFrom(initial),pin:initial.pin}, group=groups[0],part=group[2][0],direction='south';
   let past=[],future=[],saved=[...looks],reactTimer=0,released=false,saving=false;
   const checkpoint=()=>{past=[...past.slice(-39),structuredClone(draft)];future=[];};
   function drawOptions(){
@@ -56,15 +57,15 @@ export function mountDressing(root,initial,{looks=[],saveLook}={}){
       const face=faceParts.has(part), clothes=['outfit','layer','pattern','material'].includes(part);
       if(face){look.hat=0;if(part!=='eyes')look.glasses=0;}
       if(clothes){look.accessory=0;look.bag=0;}
-      const facing=group[0]==='gear'?sequence[direction]:'south';
+      const facing=group[0]==='gear'?resolvedTurn(look,direction):'south';
       const capture=()=>{
         if(!canvas.isConnected)return;
         if(face||clothes){
-          const source=document.createElement('canvas');source.width=source.height=128;
+          const source=document.createElement('canvas');source.width=source.height=256;
           character(source,look,'look',0);
           const ctx=canvas.getContext('2d');ctx.clearRect(0,0,88,88);
-          if(face)ctx.drawImage(source,27,3,74,67,0,0,88,79);
-          else ctx.drawImage(source,28,54,72,66,0,3,88,78);
+          if(face)ctx.drawImage(source,46,10,164,131,0,0,88,76);
+          else ctx.drawImage(source,54,111,148,126,0,3,88,76);
         }else{
           canvas.dataset.direction=facing;
           character(canvas,look,'look',3);
@@ -110,8 +111,13 @@ export function mountDressing(root,initial,{looks=[],saveLook}={}){
   }
   function preview(nextPose='look'){
     person._avatar={...draft};
-    person.dataset.pose=nextPose;person.dataset.direction=sequence[direction];
-    form.querySelector('[data-facing]').textContent=directions[facings.indexOf(sequence[direction])];
+    fitPortrait(person);
+    direction=resolvedTurn(draft,direction);
+    const single=approvedTurns(draft).length===1;
+    form.querySelector('[data-studio=previous]').disabled=single;
+    form.querySelector('[data-studio=next]').disabled=single;
+    person.dataset.pose=nextPose;person.dataset.direction=direction;
+    form.querySelector('[data-facing]').textContent=single?'正面のみ':directions[facings.indexOf(direction)];
     character(person,person._avatar,nextPose);
     form.querySelector('[data-studio=undo]').disabled=!past.length;
     form.querySelector('[data-studio=redo]').disabled=!future.length;
@@ -158,20 +164,24 @@ export function mountDressing(root,initial,{looks=[],saveLook}={}){
       for(const b of tray.querySelectorAll('button'))b.setAttribute('aria-pressed',String(b===button));
       preview();return;
     }
-    if(Object.hasOwn(button.dataset,'look')){checkpoint();const look=saved[Number(button.dataset.look)];draft={...avatarFrom(look),pin:look.pin,name:draft.name};direction=0;renderOptions();react('joy','着替えました。');return;}
+    if(Object.hasOwn(button.dataset,'look')){checkpoint();const look=saved[Number(button.dataset.look)];draft={...avatarFrom(look),pin:look.pin,name:draft.name};direction='south';renderOptions();react('joy','着替えました。');return;}
     switch(button.dataset.studio){
-      case 'previous':case 'next':direction=(direction+(button.dataset.studio==='next'?1:7))%8;preview();if(group[0]==='gear')drawOptions();break;
+      case 'previous':case 'next':{
+        const turns=approvedTurns(draft);
+        direction=turns[(turns.indexOf(direction)+(button.dataset.studio==='next'?1:turns.length-1))%turns.length];
+        preview();if(group[0]==='gear')drawOptions();break;
+      }
       case 'previous-page':case 'next-page':offset+=button.dataset.studio==='next-page'?pageSize:-pageSize;renderChoices();tray.querySelector('button')?.focus();break;
-      case 'greet':direction=0;react('joy','いっしょに旅に出よう。');break;
+      case 'greet':direction='south';react('joy','いっしょに旅に出よう。');break;
       case 'reset-part':checkpoint();draft={...draft,tune:{...draft.tune,[part]:{}}};renderOptions();tune.querySelector('details')?.setAttribute('open','');preview();break;
       case 'surprise':{
         checkpoint();const roll=key=>Math.floor(Math.random()*(parts[key].length-1));
         draft={...draft,hair:roll('hair'),outfit:roll('outfit'),hairColor:roll('hairColor'),hat:roll('hat'),skin:roll('skin'),accessory:roll('accessory'),hairTint:null};
-        direction=0;renderOptions();react('joy','新しい組み合わせ。');break;
+        direction='south';renderOptions();react('joy','新しい組み合わせ。');break;
       }
       case 'undo':case 'redo':{
         const source=button.dataset.studio==='undo'?past:future,target=source===past?future:past;
-        if(source.length){target.push(draft);draft=source.pop();direction=0;renderOptions();preview();}
+        if(source.length){target.push(draft);draft=source.pop();direction='south';renderOptions();preview();}
         break;
       }
       case 'save-look':
@@ -185,6 +195,10 @@ export function mountDressing(root,initial,{looks=[],saveLook}={}){
   };
   form.readAppearance=()=>({...draft,name:form.elements.name.value});
   renderParts();showLooks();preview();
+  const resize=new ResizeObserver(()=>{
+    if(fitPortrait(person))character(person,person._avatar,person.dataset.pose);
+  });
+  resize.observe(person);
   travelerAssets().then(()=>{if(!released){drawOptions();showLooks();}});
-  return ()=>{released=true;clearTimeout(reactTimer);};
+  return ()=>{released=true;resize.disconnect();clearTimeout(reactTimer);};
 }

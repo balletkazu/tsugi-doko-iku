@@ -26,7 +26,7 @@ await new Promise(resolve=>server.listen(0,'127.0.0.2',resolve));
 const origin=`http://127.0.0.2:${server.address().port}/`;
 const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH || undefined});
 try {
-  const ctx=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+  const ctx=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:3});
   const page=await ctx.newPage();
   page.setDefaultTimeout(12000);
   const errors=[];
@@ -38,7 +38,7 @@ try {
     watchPosition(ok){window.testStart();setTimeout(()=>ok({coords:{latitude:36.7,longitude:137.2,accuracy:8,speed:1.2,altitude:null,altitudeAccuracy:null},timestamp:Date.now()}),25);return 99;},clearWatch(){window.testStop();}
   }});});
   const visit=async h=>{await page.evaluate(hash=>location.hash=hash,h);await page.waitForFunction(hash=>location.hash===hash,h);await page.waitForTimeout(120);};
-  const shot=async n=>{if(process.env.ARTIFACT_DIR)await page.screenshot({path:process.env.ARTIFACT_DIR+'/rpg-'+n+'.png',animations:'disabled'});};
+  const shot=async n=>{if(process.env.ARTIFACT_DIR)await page.screenshot({path:process.env.ARTIFACT_DIR+'/rpg-'+n+'.png',animations:'disabled',scale:'css'});};
   const tile=await readFile(new URL('public/assets/icon-192.png',project));let tileRequests=0;
   await page.route('https://cyberjapandata.gsi.go.jp/**',r=>{
     tileRequests++;
@@ -155,6 +155,44 @@ try {
   await visit('#pilot');await page.getByText('経路を検索',{exact:true}).tap();await page.locator('#pilot-results').waitFor();await ctx.setOffline(false);
   await visit('#welcome');await page.getByText('案内をスキップ').tap();await page.getByRole('heading',{name:'はるの家'}).waitFor();await page.reload();await page.getByRole('heading',{name:'はるの家'}).waitFor();
   await visit('#avatar');
+  const density=await page.locator('.atelier-hero canvas').evaluate(c=>[c.width,c.getBoundingClientRect().width,devicePixelRatio]);
+  assert.equal(density[0],Math.round(density[1]*density[2]));
+  await page.evaluate(async()=>{
+    const {character,travelerAssets}=await import('/traveler-art.js');
+    const {turnSequence}=await import('/avatar-frame.js');
+    const looks=[
+      {hair:0,outfit:0,skin:0,hairTint:'#6d4b32'},
+      {hair:8,outfit:1,skin:15,hairTint:'#397f7a',hat:2,accessory:4},
+      {hair:23,outfit:0,skin:19,hairTint:'#e7dbc8',hat:3,glasses:3,bag:1,accessory:1},
+      {hair:23,outfit:1,skin:3,hairTint:'#aa4934',hat:4,bag:2,accessory:2},
+      {hair:8,outfit:0,skin:2,hairTint:'#191b24',hat:1,glasses:4,accessory:5}
+    ].map(look=>({design:2,bag:0,...look}));
+    await travelerAssets(looks[0]);
+    const frame=(look,direction)=>{
+      const canvas=document.createElement('canvas');canvas.width=canvas.height=384;canvas.dataset.direction=direction;
+      character(canvas,look,'look',0);
+      return canvas;
+    };
+    for(const look of looks){
+      const views=turnSequence.map(facing=>frame(look,facing).toDataURL());
+      if(new Set(views).size!==8)throw new Error('The reference wardrobe must render eight distinct poses');
+    }
+    const appearance=looks[0];
+    for(const facing of turnSequence){
+      const empty=frame(appearance,facing).toDataURL();
+      if(frame({...appearance,bag:1},facing).toDataURL()===empty)throw new Error('Backpack missing in '+facing);
+      if(frame({...appearance,bag:0,accessory:0},facing).toDataURL()!==empty)throw new Error('Removed gear is still visible in '+facing);
+      const back=['north','northeast','northwest'].includes(facing);
+      if((frame({...appearance,accessory:1},facing).toDataURL()===empty)!==back)throw new Error('Camera occlusion does not match '+facing);
+    }
+    const crew={...appearance,hair:8,outfit:2};
+    if(frame(crew,'north').toDataURL()!==frame(crew,'south').toDataURL())throw new Error('Legacy outfit has an unapproved view');
+    const points=await (async()=>{
+      const {referenceGuides}=await import('/reference-guides.js');
+      return referenceGuides.heads.map(([size])=>size);
+    })();
+    if(points.some(([w,h])=>Math.max(w,h)<226))throw new Error('Source resolution slipped below the native artwork target');
+  });
   // Render the reported cap + mouth + skin combinations through the real
   // renderer, and save a contact sheet for manual visual review.
   await page.evaluate(async()=>{
@@ -248,13 +286,22 @@ try {
   await page.getByRole('button',{name:'丸い短いカール',exact:true}).waitFor();
   assert.ok(await page.locator('[data-fitting-value]').count()<=12);
   await page.getByRole('navigation',{name:'選択肢のページ'}).getByRole('button',{name:'前へ'}).tap();
-  await page.getByRole('button',{name:'肩までのボブ',exact:true}).tap();await shot('atelier');
+  await page.getByRole('button',{name:'肩までのボブ',exact:true}).tap();
+  await page.getByRole('button',{name:'服',exact:true}).tap();
+  await page.getByRole('button',{name:'旅の上着',exact:true}).tap();
+  await page.getByRole('button',{name:'髪・肌',exact:true}).tap();
+  await shot('atelier');
   await page.getByRole('button',{name:'右へ回す'}).tap();await page.getByText('右斜め',{exact:true}).waitFor();
   await page.getByRole('button',{name:'右へ回す'}).tap();await page.getByText('右向き',{exact:true}).waitFor();
   await page.getByRole('button',{name:'右へ回す'}).tap();await page.getByText('右斜め後ろ',{exact:true}).waitFor();
   await page.getByRole('button',{name:'右へ回す'}).tap();await page.getByText('背面',{exact:true}).waitFor();await shot('avatar-turn');
   await page.getByRole('button',{name:'顔',exact:true}).tap();await page.getByRole('button',{name:'目',exact:true}).tap();
   await page.getByText('位置・形を微調整').tap();await page.locator('input[data-tuning=gap]').fill('5');await shot('avatar-tune');
+  await page.getByRole('button',{name:'服',exact:true}).tap();
+  await page.getByRole('button',{name:'雨のポンチョ',exact:true}).tap();
+  await page.getByText('正面のみ',{exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'右へ回す'}).isDisabled(),true);
+  await page.getByRole('button',{name:'木綿の部屋着',exact:true}).tap();
   await page.getByRole('button',{name:/コーデを保存/}).tap();await page.getByText('コーデを保存しました。').waitFor();
   await page.getByRole('button',{name:'できあがり'}).tap();await page.getByRole('heading',{name:'はるの家'}).waitFor();
   await page.getByRole('button',{name:'家具を使う'}).tap();await page.getByRole('button',{name:'窓辺のベッド'}).tap();
@@ -420,5 +467,5 @@ try {
   await page.getByRole('heading',{name:'編集中の名前の家'}).waitFor();
   await ctx.setOffline(false);
   console.log('PASS a deployed update offers reload, preserves edits until the user saves, and keeps records on the new offline shell.');
-  assert.deepEqual(errors,[]);console.log('PASS four tabs and direct travel tools, 148 sprite combinations, touch placement and pinch, stamp books, real Toyama schedules and a shared map, private experience confirmation and rewards, companion practice and offline PWA.');
+  assert.deepEqual(errors,[]);console.log('PASS four tabs and direct travel tools, 148 regression combinations and 40 reference poses, touch placement and pinch, stamp books, real Toyama schedules and a shared map, private experience confirmation and rewards, companion practice and offline PWA.');
 } finally {await browser.close();server.close();}

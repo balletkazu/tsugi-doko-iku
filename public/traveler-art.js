@@ -5,6 +5,9 @@ import {materialGuides} from './material-guides.js';
 import {channelsOf as rgb,lightness,toneValue,skinInk,pigmentWeights} from './material-color.js';
 import {styles} from './style-catalog.js';
 import {collectionItem} from './item-catalog.js';
+import {authoredTurn,referenceHair,referenceOutfit,resolvedTurn} from './avatar-frame.js';
+import {referenceAssets,referenceReady,referenceBody,referencePack,referenceTorsoGear,
+  referenceHeadGeometry,referenceHat,referenceHairAndSkin,referenceFeatures,referenceGlasses,drawReferenceHat} from './reference-art.js';
 import {spriteSize as cell,groundY,eyeLine,facings,rigView,fitHat,stride,visibleMotion} from './avatar-rig.js';
 
 export {facings};
@@ -31,7 +34,7 @@ const available=name=>!!sheet(name).naturalWidth;
 const faces=avatar=>styles.hair[avatar.hair].sheet;
 const materialReady=name=>available(name)&&available(name+'-map');
 function additions(a){
-  const parts=[faces(a),styles.outfit[a.outfit].sheet].filter(name=>addon.has(name));
+  const parts=[referenceHair.has(a.hair)?null:faces(a),styles.outfit[a.outfit].sheet].filter(name=>addon.has(name));
   const art=a.pin&&collectionItem(a.pin)?.sheet;
   return [...new Set([...parts.flatMap(part=>[part,part+'-map']),...(addon.has(art)?[art]:[])])];
 }
@@ -39,7 +42,7 @@ function readAll(names){
   return Promise.all(names.map(name=>{sheet(name);return images.get(name).ready;}));
 }
 export function travelerAssets(input){
-  assets??=readAll(core);
+  assets??=Promise.all([readAll(core),referenceAssets()]);
   return input?Promise.all([assets,readAll(additions(appearance(input)))]):assets;
 }
 if(typeof window!=='undefined')window.addEventListener('online',()=>{
@@ -186,7 +189,7 @@ function placeFeatures(ctx,name,index,offset,scale,a,pose,blink,eyes,mouth,side)
   ctx.drawImage(faceLayer,-64,-64);
 }
 function headShape(a,view){
-  const scale=.62;
+  const scale=.54;
   const asset=styles.hair[a.hair],name=asset.sheet,old=name==='head-core';
   const side=view.side&&(!view.oblique||old);
   const direction=view.rearward?(old?32:2):side?(old?16:1):view.oblique?3:0;
@@ -236,8 +239,11 @@ function paintHead(ctx,a,shape,view,pose,blink,mount){
     // Keep the locks and ear-level hair below the cap. A bun cannot poke
     // through the crown, even when its natural height exceeds the brim.
     layer.beginPath();
-    layer.moveTo(-64,mount.seat-13);
-    layer.quadraticCurveTo(0,mount.seat+3,64,mount.seat-13);
+    const radius=mount.w*.41,cx=mount.center,y=mount.seat;
+    layer.moveTo(cx-radius-12,y+24);
+    layer.bezierCurveTo(cx-radius+1,y+10,cx-radius-2,y-7,cx-radius+4,y-18);
+    layer.quadraticCurveTo(cx,y-33,cx+radius-4,y-18);
+    layer.bezierCurveTo(cx+radius+2,y-7,cx+radius-1,y+10,cx+radius+12,y+24);
     layer.lineTo(64,64);layer.lineTo(-64,64);layer.closePath();layer.clip();
   }
   const {name,index,x,y,w,h,box}=shape;
@@ -390,8 +396,6 @@ function body(ctx,a,view,pose,frame){
   const h=(frontBox[3]-frontBox[1])*.55;
   const w=(box[2]-box[0])*h/(box[3]-box[1])*(old?.98:1.09)*(old&&view.side?.84:1);
   const neck=-h,walking=pose==='walk',phase=(frame%32)/32;
-  const readingTick=frame%68;
-  const pageTurn=pose==='read'&&readingTick>=14&&readingTick<=29?Math.sin((readingTick-14)*Math.PI/15):0;
   wearPack(ctx,a,view,w,neck,true);
   const bootY=last(box[1],box[3],a.shoes?.82:.76),bootH=(box[3]-bootY)*h/(box[3]-box[1]);
   const steps=[walking?stride(phase,-1):{x:0,lift:0,angle:0},walking?stride(phase,1):{x:0,lift:0,angle:0}];
@@ -413,45 +417,115 @@ function body(ctx,a,view,pose,frame){
   const shade=ctx.createLinearGradient(0,neck-5,0,neck+4);
   shade.addColorStop(0,skinInk(skin,150));shade.addColorStop(1,skinInk(skin,206));
   ctx.fillStyle=shade;ctx.fill();
-  return {neck,w,pageTurn};
+  return {neck,w};
+}
+function replacementFootwear(ctx,a,view,steps){
+  const index=(a.shoes-1)*4+view.angle;
+  const box=footwear[index],single=view.angle===2;
+  const split=(box[0]+box[2])/2;
+  for(const [i,step] of steps.entries()){
+    const crop=single?box:i===0?[box[0],box[1],split,box[3]]:[split,box[1],box[2],box[3]];
+    const w=single?16:12,h=a.shoes===3?15:10;
+    const x=(i===0?-1:1)*(single?3:6)+(single?3:0)+step.x*.54;
+    drawCell(ctx,sheet('footwear'),index,x-w/2,-h-step.lift*.6,w,h,crop);
+  }
+}
+function referenceFace(ctx,a,shape,mount,turn,pose,blink){
+  referenceHairAndSkin(ctx,a,shape,mount,'skin');
+  if(shape.eye){
+    const tuned=['eyes','brows','nose','mouth','ears'].some(part=>Object.values(a.tune?.[part]??{}).some(Boolean));
+    if(!tuned&&!blink&&pose!=='joy'&&!a.eyes&&!a.brows&&!a.nose&&!a.mouth&&!a.beard&&!a.ears){
+      referenceFeatures(ctx,shape);
+    }else features(ctx,a,pose,blink,shape.eye,shape.mouth,shape.side);
+  }
+  const earring=()=>{
+    if(a.accessory!==4||turn.index===4)return;
+    const box=detail[11],half=[box[0],box[1],(box[0]+box[2])/2,box[3]];
+    for(const [x,y] of shape.ear)drawCell(ctx,sheet('details'),11,x-1.8,y-1,3.6,6.2,half);
+  };
+  earring();
+  referenceGlasses(ctx,a,shape,turn);
+  referenceHairAndSkin(ctx,a,shape,mount,'front');
+  drawReferenceHat(ctx,mount,turn,a.hat);
+  if(a.accessory===3&&turn.index<3)prop(ctx,10,shape.axis+10,shape.temple+(mount?8:2),9,5.8);
 }
 function drawCharacter(canvas,a,inputPose,frame){
   const ctx=canvas.getContext('2d');
   const requested={left:'west',right:'east'}[canvas.dataset.direction]??canvas.dataset.direction??'south';
-  const view=rigView(facings.includes(requested)?requested:'south');
-  const pose=visibleMotion(inputPose);
-  const height=[1,.932,1.07][a.height]+(a.tune?.height?.size??0)*.011;
-  const width=[1,.87,1.143][a.body]+(a.tune?.body?.size??0)*.014;
+  const usesReference=referenceHair.has(a.hair)||referenceOutfit.has(a.outfit);
   ctx.setTransform(canvas.width/cell,0,0,canvas.height/cell,0,0);
   ctx.clearRect(0,0,cell,cell);
-  if(!core.every(available))return;
-  if(!materialReady(faces(a)))a={...a,hair:0};
+  if(!core.every(available)||usesReference&&!referenceReady())return;
+  if(!referenceHair.has(a.hair)&&!materialReady(faces(a)))a={...a,hair:0};
   if(!materialReady(styles.outfit[a.outfit].sheet))a={...a,outfit:0};
+  if((referenceHair.has(a.hair)||referenceOutfit.has(a.outfit))&&!referenceReady())return;
+  const direction=resolvedTurn(a,requested);
+  const view=rigView(direction),turn=authoredTurn(direction);
+  const pose=inputPose==='walk'&&direction!==requested?'look':visibleMotion(inputPose);
+  const height=[1,.932,1.07][a.height]+(a.tune?.height?.size??0)*.011;
+  const width=[1,.87,1.143][a.body]+(a.tune?.body?.size??0)*.014;
   const step=pose==='walk'?Math.cos((frame%16)/16*Math.PI*2):0;
-  oval(ctx,64,groundY,20+Math.abs(step),3.2,'#47332236');
-  ctx.save();
-  ctx.translate(64,groundY);
-  ctx.scale(view.mirror?-width:width,height);
-  const garment=body(ctx,a,view,pose,frame);
-  const breathe=Math.sin(frame*.085)*.64;
-  ctx.save();
-  ctx.translate(step*.65,garment.neck+1+breathe);
-  ctx.rotate(pose==='read'?.085:step*.025);
-  head(ctx,a,pose,frame%43>=40,view,groundY/height+garment.neck);
+  const breathe=Math.sin(frame*.085)*.43;
+  const readingTick=frame%68;
+  const page=pose==='read'&&readingTick>=14&&readingTick<=29?Math.sin((readingTick-14)*Math.PI/15):0;
+  const blink=frame%137>=132;
+  const hair=referenceHair.get(a.hair),refCoat=referenceOutfit.has(a.outfit);
+  const geometry=hair===undefined?null:referenceHeadGeometry(a,turn,hair);
+  const mount=geometry?referenceHat(a,turn,geometry):null;
+  oval(ctx,64,groundY,17+Math.abs(step),3.05,'#47332236');
+  ctx.save();ctx.translate(64,groundY);ctx.scale(view.mirror?-1:1,height);
+  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+
+  const headTransform=()=>{
+    const tune=a.tune?.face??{};
+    ctx.translate(geometry.axis+(tune.x??0)*.30+step*.45,-57+(tune.y??0)*.26+breathe);
+    ctx.rotate((tune.angle??0)*Math.PI/235+(pose==='read'?.055:step*.018));
+    ctx.scale(([1,.94,1.05,.95][a.face])+(tune.size??0)*.012,1+(tune.gap??0)*.012);
+    ctx.translate(-geometry.axis,57);
+  };
+  const paintBackHair=()=>{
+    ctx.save();headTransform();referenceHairAndSkin(ctx,a,geometry,mount,'behind');ctx.restore();
+  };
+  if(geometry&&!turn.behind)paintBackHair();
+
+  ctx.save();ctx.scale(width,1);
+  let garment;
+  if(refCoat){
+    const walking=pose==='walk',phase=(frame%32)/32;
+    const steps=[-1,1].map(side=>walking?stride(phase,side):{x:0,lift:0,angle:0});
+    referencePack(ctx,a,turn,true);
+    garment=referenceBody(ctx,a,turn,{steps,walking,drawShoes:()=>replacementFootwear(ctx,a,view,steps),
+      layer:(w,neck)=>prop(ctx,13+a.layer,-w*.39,neck+7,w*.78,15)});
+    referencePack(ctx,a,turn,false);
+    referenceTorsoGear(ctx,a,turn,garment.w,pose);
+    collarAndHolding(ctx,{...a,bag:0,accessory:a.accessory===2?2:0},view,garment.w,garment.neck,pose,page);
+  }else{
+    garment=body(ctx,a,view,pose,frame);
+    collarAndHolding(ctx,a,view,garment.w,garment.neck,pose,page);
+  }
   ctx.restore();
-  collarAndHolding(ctx,a,view,garment.w,garment.neck,pose,garment.pageTurn);
+
+  if(geometry){
+    if(turn.behind)paintBackHair();
+    ctx.save();headTransform();referenceFace(ctx,a,geometry,mount,turn,pose,blink);ctx.restore();
+  }else{
+    ctx.save();ctx.translate(step*.65,garment.neck+1+breathe);
+    ctx.rotate(pose==='read'?.07:step*.025);
+    head(ctx,a,pose,blink,view,groundY/height+garment.neck);
+    ctx.restore();
+  }
   ctx.restore();
 }
 export function character(canvas,input,pose='look',frame=0){
   const a=appearance(input);
   canvas._spriteInput=[a,pose,frame];
   const missing=[...core,...additions(a)].filter(name=>!available(name));
+  if((referenceHair.has(a.hair)||referenceOutfit.has(a.outfit))&&!referenceReady())missing.push('reference-rig');
   const pending=missing.join('|');
   if(pending&&canvas._waitingForArt!==pending){
     canvas._waitingForArt=pending;
     travelerAssets(a).then(()=>{if(canvas._spriteInput)drawCharacter(canvas,...canvas._spriteInput);});
   }else if(!pending)canvas._waitingForArt='';
-
   drawCharacter(canvas,a,pose,frame);
 }
 export function animateWorld(root,avatar,reduced){

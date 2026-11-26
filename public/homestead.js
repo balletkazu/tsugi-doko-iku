@@ -54,7 +54,7 @@ export function mountHomestead(root,{game,avatar,reduced,commit,notify}){
     (point[1]/projection.top-.27)*spec.height/.52
   ]:projection.fromPlane(point);
   const tools=scene.querySelector('.house-toolbox'),quick=scene.querySelector('.house-choices');
-  const art=document.createElement('canvas');art.width=art.height=128;
+  const art=document.createElement('canvas');art.width=art.height=256;
   const fallback=document.createElement('canvas');fallback.width=fallback.height=32;
   const pointers=new Map(),hits=[];
   const dims={w:projection.width,h:projection.height};
