@@ -3,8 +3,10 @@ import { importPhoto } from './storage.js';
 import { empty, external, icon, link, page } from './ui.js';
 
 export const recordGroup = type => type === 'trip' ? 'trips' : 'journals';
-const missing = () => page('記録が見つかりません','この端末に保存した記録を開けます。',link('#my','私の旅へ戻る','arrow'),{narrow:true});
-const back = `<p class="no-print">${link('#my','私の旅へ','back','text-link')}</p>`;
+const recordHome = type => type === 'trip' ? '#plan' : '#plan?view=journal';
+const homeLabel = type => type === 'trip' ? '旅のしおりへ' : '自分の旅日記へ';
+const missing = type => page('記録が見つかりません','この端末に保存した記録を開けます。',link(recordHome(type),homeLabel(type),'arrow'),{narrow:true});
+const back = type => `<p class="no-print">${link(recordHome(type),homeLabel(type),'back','text-link')}</p>`;
 const moods = ['指定なし','うれしい','穏やか','わくわく','驚き','しみじみ','疲れた'];
 const photoUrls = new Set();
 const allowedMime = 'image/jpeg,image/png,image/webp,image/avif';
@@ -18,18 +20,18 @@ function formScreen(type, entry) {
   const name = trip ? '旅の栞' : '旅の日記';
   const title = entry ? `${name}を編集` : trip ? '旅の栞を作る' : '旅の日記を書く';
   const mood = entry?.mood ?? '指定なし';
-  return page(title,trip ? '日付、立ち寄り先、移動のメモをまとめる。' : '思い出す風景や、そのときの気持ちを残す。',`${back}<form id="record-form" data-type="${type}" data-id="${entry?.id ?? ''}" class="surface flow"><label>タイトル<input name="title" required maxlength="100" value="${e(entry?.title)}" placeholder="${trip ? '例：海辺をめぐる一日' : '例：森で出会った音'}"></label><div class="field-grid"><label>日付<input type="date" name="date" value="${e(entry?.date)}"></label><label>${trip ? '主な目的地' : '訪ねた場所'}<input name="place" maxlength="120" value="${e(entry?.place)}"></label></div>${trip ? `<label>旅程・立ち寄り先<textarea name="body" maxlength="4000" rows="5">${e(entry?.body)}</textarea></label><label>交通・持ち物のメモ<textarea name="transport" maxlength="2000" rows="3">${e(entry?.transport)}</textarea></label>` : `<label>そのときの気持ち<select name="mood">${moods.map(value=>`<option ${value===mood?'selected':''}>${value}</option>`).join('')}</select></label><label>日記の本文<textarea name="body" maxlength="4000" rows="7">${e(entry?.body)}</textarea></label>`}${photoFields(entry)}<p class="notice">公開範囲：自分だけ。このブラウザーに保存されます。</p><div class="actions"><button class="button" type="submit">${entry ? '変更を保存する' : '保存する'}${icon('arrow')}</button>${link(entry ? `#${type}/${entry.id}` : '#my','戻る',null,'text-link')}</div><p id="record-error" class="error" role="alert" hidden></p></form>`,{narrow:true,eyebrow:trip ? 'Trip booklet' : 'Travel journal'});
+  return page(title,trip ? '日付、立ち寄り先、移動のメモをまとめる。' : '思い出す風景や、そのときの気持ちを残す。',`${back(type)}<form id="record-form" data-type="${type}" data-id="${entry?.id ?? ''}" class="surface flow"><label>タイトル<input name="title" required maxlength="100" value="${e(entry?.title)}" placeholder="${trip ? '例：海辺をめぐる一日' : '例：森で出会った音'}"></label><div class="field-grid"><label>日付<input type="date" name="date" value="${e(entry?.date)}"></label><label>${trip ? '主な目的地' : '訪ねた場所'}<input name="place" maxlength="120" value="${e(entry?.place)}"></label></div>${trip ? `<label>旅程・立ち寄り先<textarea name="body" maxlength="4000" rows="5">${e(entry?.body)}</textarea></label><label>交通・持ち物のメモ<textarea name="transport" maxlength="2000" rows="3">${e(entry?.transport)}</textarea></label>` : `<label>そのときの気持ち<select name="mood">${moods.map(value=>`<option ${value===mood?'selected':''}>${value}</option>`).join('')}</select></label><label>日記の本文<textarea name="body" maxlength="4000" rows="7">${e(entry?.body)}</textarea></label>`}${photoFields(entry)}<p class="notice">公開範囲：自分だけ。このブラウザーに保存されます。</p><div class="actions"><button class="button" type="submit">${entry ? '変更を保存する' : '保存する'}${icon('arrow')}</button>${link(entry ? `#${type}/${entry.id}` : recordHome(type),'戻る',null,'text-link')}</div><p id="record-error" class="error" role="alert" hidden></p></form>`,{narrow:true,eyebrow:trip ? 'Trip booklet' : 'Travel journal'});
 }
 
 function itemScreen(type, entry) {
   const trip = type === 'trip';
-  return page(entry.title,trip ? '旅の栞' : '旅の日記・自分だけ',`${back}<article class="surface flow">${entry.date || entry.place ? `<p>${[entry.date,entry.place].filter(Boolean).map(e).join(' · ')}</p>` : ''}${entry.mood && entry.mood !== '指定なし' ? `<p class="eyebrow">${e(entry.mood)}</p>` : ''}${entry.photos?.length ? `<div class="photo-list" data-photos="${entry.id}"></div>` : ''}${entry.body ? `<section class="flow"><h2>${trip ? '旅程・立ち寄り先' : '日記'}</h2><p class="prewrap">${e(entry.body)}</p></section>` : ''}${entry.transport ? `<section class="flow"><h2>交通・持ち物のメモ</h2><p class="prewrap">${e(entry.transport)}</p></section>` : ''}${entry.place ? `<div class="no-print">${external(mapsSearch(entry.place),'地図で見る')}</div>` : ''}<div class="actions no-print">${link(`#${type}/${entry.id}/edit`,'編集する','edit','button button-outline')}${trip ? '<button class="button button-outline" type="button" data-action="print">印刷・PDFにする</button><button class="button button-outline" type="button" data-action="share">テキストで共有</button>' : ''}<button class="button button-danger" type="button" data-action="delete-record" data-type="${type}" data-id="${entry.id}">削除</button></div>${trip ? '<small class="muted no-print">テキスト共有には写真を含みません。</small>' : ''}</article>`,{narrow:true,eyebrow:trip ? 'Trip booklet' : 'Travel journal'});
+  return page(entry.title,trip ? '旅の栞' : '旅の日記・自分だけ',`${back(type)}<article class="surface flow">${entry.date || entry.place ? `<p>${[entry.date,entry.place].filter(Boolean).map(e).join(' · ')}</p>` : ''}${entry.mood && entry.mood !== '指定なし' ? `<p class="eyebrow">${e(entry.mood)}</p>` : ''}${entry.photos?.length ? `<div class="photo-list" data-photos="${entry.id}"></div>` : ''}${entry.body ? `<section class="flow"><h2>${trip ? '旅程・立ち寄り先' : '日記'}</h2><p class="prewrap">${e(entry.body)}</p></section>` : ''}${entry.transport ? `<section class="flow"><h2>交通・持ち物のメモ</h2><p class="prewrap">${e(entry.transport)}</p></section>` : ''}${entry.place ? `<div class="no-print">${external(mapsSearch(entry.place),'地図で見る')}</div>` : ''}<div class="actions no-print">${link(`#${type}/${entry.id}/edit`,'編集する','edit','button button-outline')}${trip ? '<button class="button button-outline" type="button" data-action="print">印刷・PDFにする</button><button class="button button-outline" type="button" data-action="share">テキストで共有</button>' : ''}<button class="button button-danger" type="button" data-action="delete-record" data-type="${type}" data-id="${entry.id}">削除</button></div>${trip ? '<small class="muted no-print">テキスト共有には写真を含みません。</small>' : ''}</article>`,{narrow:true,eyebrow:trip ? 'Trip booklet' : 'Travel journal'});
 }
 
 export function recordScreen(type, id, edit, data) {
   if (!id || id === 'new') return formScreen(type);
   const entry = data[recordGroup(type)].find(item=>item.id === id);
-  if (!entry) return missing();
+  if (!entry) return missing(type);
   return edit === 'edit' ? formScreen(type,entry) : itemScreen(type,entry);
 }
 

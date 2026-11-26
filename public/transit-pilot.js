@@ -17,8 +17,9 @@ const clock = seconds => {
 const minutes = seconds => `${Math.ceil(seconds/60)}分`;
 const iso = short => `${short.slice(0,4)}-${short.slice(4,6)}-${short.slice(6)}`;
 
-function step(schedule,leg) {
-  const from = e(schedule.points[leg.from][1]), to = e(schedule.points[leg.to][1]);
+function step(schedule,leg,numbers) {
+  const stopLabel=id=>e(schedule.points[id][1])+(numbers.has(id)?` <span class="stop-number">${numbers.get(id)}</span>`:'');
+  const from=stopLabel(leg.from),to=stopLabel(leg.to);
   if (leg.mode==='walk') return `<li><strong>徒歩 約${minutes(leg.end-leg.start)}</strong> <span>${from} → ${to}</span></li>`;
   const [,name,mode] = schedule.routes[leg.route];
   return `<li><strong>${modeLabel[mode]} · ${e(name)}</strong> <span>${clock(leg.start)}発 ${from} → ${clock(leg.end)}着 ${to}</span></li>`;
@@ -33,14 +34,22 @@ function results(pilot,request) {
   if(request.order==='fare')routes.sort((a,b)=>(a.fare??Infinity)-(b.fare??Infinity)||a.end-b.end);
   const titles = ['徒歩のみ','路面電車','バス','路面電車とバス'];
   if (!routes.length) return `<p class="notice">この日時・徒歩${request.limit}分以内で${request.mixed?'路面電車とバスの両方を使う':''}候補は収録データから見つかりませんでした。</p>`;
-  return `<div class="flow">${routes.map(route=>`<article class="surface flow pilot-result" data-modes="${route.mask}" data-walking="${route.walk}">
-    <h3>${titles[route.mask]}${route.end===firstArrival?' · 到着が最も早い候補':''}</h3>
-    <p><strong>${clock(route.start)} → ${clock(route.end)}</strong> <span class="muted">所要 約${minutes(route.end-route.start)} · 徒歩 約${minutes(route.walk)} / 上限${request.limit}分${route.rides>1?` · 乗り換え${route.rides-1}回`:''}</span></p>
-    <ol>${route.legs.map(leg=>step(schedule,leg)).join('')}</ol>
-    <details data-route-legs="${e(JSON.stringify(route.legs))}"><summary>実際の地図で見る</summary><p class="muted">青は路面電車、赤はバス、緑の点線は収録済みの徒歩経路です。未収録の徒歩区間は両端の地点だけを示します。</p>${practicalMarkup('この候補の乗車と徒歩の地図')}</details>
-    ${detour(pilot,route,request.limit)}
-    ${route.rides?`<p class="muted">${Number.isFinite(route.fare)?`収録運賃の合計 ${route.fare}円 · 割引などは含みません`:'運賃の全区間分は収録されていません'}</p>`:''}
-  </article>`).join('')}</div>`;
+  const title=route=>titles[route.mask]+(route.end===firstArrival?' · 最速':'');
+  return `<div class="route-results" data-journeys="${e(JSON.stringify(routes.map(route=>route.legs)))}">
+    <nav class="travel-tabs route-tabs" aria-label="経路の候補">${routes.map((route,i)=>`<button type="button" data-route-index="${i}" aria-controls="route-option-${i}" aria-pressed="${i===0}">${title(route)} <small>${clock(route.end)}着</small></button>`).join('')}</nav>
+    <div class="route-map">${practicalMarkup('選んだ経路の乗降・徒歩・乗換地図')}</div>
+    <p class="route-key"><span class="line-walk">徒歩（点線）</span><span class="line-tram">電車</span><span class="line-bus">バス</span></p>
+    <p data-route-coverage class="muted"></p>
+    ${routes.map((route,i)=>{
+      const numbers=new Map(journeyMarkers(pilot,route.legs).map(marker=>[marker.id,marker.number]));
+      return `<article class="pilot-result" id="route-option-${i}" data-modes="${route.mask}" data-walking="${route.walk}" ${i?'hidden':''}>
+      <h3>${title(route)}</h3>
+      <p><strong>${clock(route.start)} → ${clock(route.end)}</strong> <span class="muted">所要 約${minutes(route.end-route.start)} · 徒歩 約${minutes(route.walk)} / 上限${request.limit}分${route.rides>1?` · 乗り換え${route.rides-1}回`:''}</span></p>
+      <ol class="route-steps">${route.legs.map(leg=>step(schedule,leg,numbers)).join('')}</ol>
+      ${detour(pilot,route,request.limit)}
+      ${route.rides?`<p class="muted">${Number.isFinite(route.fare)?`収録運賃の合計 ${route.fare}円 · 割引などは含みません`:'運賃の全区間分は収録されていません'}</p>`:''}
+    </article>`;}).join('')}
+  </div>`;
 }
 
 function detour({schedule,walking},route,limit) {
@@ -59,7 +68,7 @@ function detour({schedule,walking},route,limit) {
 }
 
 export function pilotPage(pilot,request) {
-  const back = link('#route','行き方へ','back','text-link');
+  const back = link('#plan','旅の計画へ','back','text-link');
   if (!pilot) return page('富山市で行き方を探す','',`<p role="status">${pilot===false?'データを読み込めませんでした。ページを再読み込みしてください。':'時刻表を読み込んでいます。'}</p>${back}`,{narrow:true});
   const {schedule} = pilot;
   const today = new Intl.DateTimeFormat('sv-SE',{year:'numeric',month:'2-digit',day:'2-digit',timeZone:schedule.timezone}).format();
@@ -80,9 +89,9 @@ export function pilotPage(pilot,request) {
       <div class="field-grid"><label>日付<input type="date" name="date" required min="${iso(schedule.start)}" max="${iso(schedule.end)}" value="${e(request?.date ?? (isScheduleDate(schedule,today)?today:iso(schedule.start)))}"></label>
         <label>出発時刻（日本時間）<input type="time" name="time" required value="${e(request?.time ?? '10:00')}"></label></div>
       <fieldset><legend>歩く時間の合計上限</legend><div class="world-actions">${walkingLimits.map(n=>`<button type="button" class="chip" data-walk-minutes="${n}">${n===30?'30分':n/60+'時間'}</button>`).join('')}</div><label>分単位で設定（0〜180分）<input type="number" min="0" max="180" step="1" required name="limit" value="${request?.limit??30}"></label></fieldset>
-      <label>表示する候補の順番<select name="order"><option value="arrival">到着が早い順</option><option value="fare" ${request?.order==='fare'?'selected':''}>収録された運賃が低い順</option></select></label>
+      <details class="travel-secondary"><summary>経路の表示条件</summary><label>表示する候補の順番<select name="order"><option value="arrival">到着が早い順</option><option value="fare" ${request?.order==='fare'?'selected':''}>収録された運賃が低い順</option></select></label>
       <small>全区間の運賃が分かる候補を比較します。運賃が未収録の候補は運賃順の末尾に表示します。</small>
-      <label class="check-row"><input type="checkbox" name="mixed" ${request?.mixed?'checked':''}>路面電車とバスの両方を使う</label>
+      <label class="check-row"><input type="checkbox" name="mixed" ${request?.mixed?'checked':''}>路面電車とバスの両方を使う</label></details>
       <button class="button">経路を検索</button>
     </form>
     ${request ? `<section id="pilot-results" tabindex="-1" class="flow"><h2>検索結果</h2>${results(pilot,request)}</section>` : ''}
@@ -108,16 +117,38 @@ export function geometryForLeg(pilot,leg) {
   const point=n=>{const i=Math.floor(n),a=line[i],b=line[Math.min(i+1,line.length-1)];return a.map((v,k)=>v+(b[k]-v)*(n-i));};
   return [{mode,coords:[point(start),...line.slice(Math.floor(start)+1,Math.ceil(end)),point(end)]}];
 }
-export function mountRouteMaps(root,pilot) {
-  const mounted=new Map();
-  for(const details of root.querySelectorAll('details[data-route-legs]'))details.ontoggle=()=>{
-    if(!details.isConnected)return;
-    mounted.get(details)?.();mounted.delete(details);
-    if(details.open){
-      const legs=JSON.parse(details.dataset.routeLegs).flatMap(leg=>geometryForLeg(pilot,leg));
-      mounted.set(details,practicalMap(details.querySelector('.tile-widget'),[36.7,137.21],{legs,fit:true}));
-    }
+export function journeyMarkers(pilot,legs){
+  const {geometry,schedule}=pilot;
+  const marks=new Map();
+  const add=(id,kind)=>{
+    const coords=geometry.stops[id], label=schedule.points[id]?.[1];
+    if(coords)marks.set(id,{coords,label,kind});
   };
+  for(const leg of legs)if(leg.mode==='ride'){add(leg.from,'ride');add(leg.to,'transfer');}
+  add(legs[0].from,'start');add(legs.at(-1).to,'end');
+  const ordered=[legs[0].from,...legs.flatMap(leg=>[leg.from,leg.to])];
+  return [...new Set(ordered)].filter(id=>marks.has(id)).map((id,index)=>({...marks.get(id),id,number:index+1}));
+}
+
+export function mountRouteMaps(root,pilot) {
+  let close=()=>{};
+  const panel=root.querySelector('[data-journeys]');
+  if(panel){
+    const journeys=JSON.parse(panel.dataset.journeys),tabs=[...panel.querySelectorAll('[data-route-index]')];
+    const choose=index=>{
+      const chosen=journeys[index],legs=chosen.flatMap(leg=>geometryForLeg(pilot,leg));
+      tabs.forEach((tab,i)=>{
+        tab.setAttribute('aria-pressed',String(i===index));
+        panel.querySelector('#route-option-'+i).hidden=i!==index;
+      });
+      close();
+      close=practicalMap(panel.querySelector('.tile-widget'),[36.7,137.21],{legs,markers:journeyMarkers(pilot,chosen),fit:true});
+      panel.querySelector('[data-route-coverage]').textContent=legs.some(l=>l.mode==='point')?
+        '形状が未収録の区間は両端の地点のみ。徒歩時間は概算です。':'路線と収録済みの徒歩経路を表示しています。徒歩時間は概算です。';
+    };
+    tabs.forEach((tab,index)=>{tab.onclick=()=>choose(index);});
+    choose(0);
+  }
   for(const button of root.querySelectorAll('[data-walk-minutes]'))button.onclick=()=>{button.form.elements.limit.value=button.dataset.walkMinutes;};
-  return ()=>{for(const close of mounted.values())close();mounted.clear();};
+  return ()=>close();
 }

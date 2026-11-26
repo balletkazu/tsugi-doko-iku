@@ -112,7 +112,7 @@ export function createGallery(root, {go, notify}) {
     }).join('');
     return page('写真の下書き','投稿の準備を自分のペースで。',`<div class="flow">${link('#photos/new','新しい下書き','edit')}
       ${cards ? `<div class="draft-list">${cards}</div>` : '<p class="notice">下書きはまだありません。</p>'}
-      ${link('#my','旅の部屋へ','back','text-link')}</div>`,{narrow:true});
+      ${link('#home','みんなの旅へ','back','text-link')}</div>`,{narrow:true});
   }
 
   async function addFiles(form, files) {

@@ -25,7 +25,7 @@ export function roomSettings(profile) {
     <label class="check-row"><input type="checkbox" name="motion" ${motion?'checked':''}>スタンプやページ送りの動きを使う</label>
     <label class="check-row"><input type="checkbox" name="sound" ${sound?'checked':''}>スタンプとメダルの音を使う</label>
     <p class="muted">端末の「視差効果を減らす」「アニメーションを減らす」設定も反映します。</p>
-    <div class="actions"><button class="button">設定を保存</button>${link('#my','旅の部屋へ','back','text-link')}</div></form>`,{narrow:true});
+    <div class="actions"><button class="button">設定を保存</button>${link('#cottage','自分の世界へ','back','text-link')}</div></form>`,{narrow:true});
 }
 
 function realStampCount(profile){
@@ -47,7 +47,7 @@ export function medalPage(profile,data) {
       return `<article data-medal="${medal.id}" class="surface medal-card${claimed?' obtained':''}"><span class="medal-icon" aria-hidden="true">${icon('stamp')}</span>
         <h2>${medal.name}</h2><p>${medal.detail}</p>${claimed ? '<small>受け取り済み</small>' : earned ?
           `<button type="button" class="button" data-action="claim-medal" data-id="${medal.id}">メダルを受け取る</button>` : '<small>まだ受け取れません</small>'}</article>`;
-    }).join('')}</div><p>${link('#my','旅の部屋へ','back','text-link')}</p>`);
+    }).join('')}</div><p>${link('#cottage','自分の世界へ','back','text-link')}</p>`);
 }
 
 export function mailbox(profile,data) {
@@ -55,7 +55,7 @@ export function mailbox(profile,data) {
   return page('郵便受け','旅の部屋に届くお知らせ。',`<div class="surface flow">
     ${available.length ? `<h2>メダルが届きました</h2><ul>${available.map(m=>`<li>${m.name}</li>`).join('')}</ul>${link('#medals','メダルを見に行く','arrow')}` : '<p>新しいお知らせはありません。</p>'}
     <p class="muted">この版には部屋で獲得した記念のお知らせが届きます。旅人どうしの通知は準備中です。</p>
-    ${link('#my','旅の部屋へ','back','text-link')}</div>`,{narrow:true});
+    ${link('#cottage','自分の世界へ','back','text-link')}</div>`,{narrow:true});
 }
 
 let audio;

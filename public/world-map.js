@@ -1,7 +1,7 @@
 import outline from './data/japan-outline.js';
 import { prefectures } from './world-data.js';
 
-export function atlas(canvas,selected,choose) {
+export function atlas(canvas,selected,choose,highlighted=[]) {
   const ctx=canvas.getContext('2d'), w=canvas.width, h=canvas.height;
   const coords=(lon,lat)=>[(lon-121.8)/(147.2-121.8)*w,(46.8-lat)/(46.8-23.6)*h];
   ctx.fillStyle='#b9d8cf';ctx.fillRect(0,0,w,h);
@@ -25,13 +25,17 @@ export function atlas(canvas,selected,choose) {
     const [x,y]=p.xy;ctx.fillStyle='#83785b';ctx.fillRect(x-1,y-1,3,3);
     if(p.id===selected){ctx.strokeStyle='#f9f2d9';ctx.fillStyle='#af5c43';ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,6,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle='#fff3cc';ctx.fillRect(x-1,y-1,2,2);}
   }
+  ctx.fillStyle='#347263';ctx.strokeStyle='#fff4d6';ctx.lineWidth=1.5;
+  for(const point of highlighted){const [x,y]=coords(point.lon,point.lat);ctx.beginPath();ctx.arc(x,y,4.5,0,Math.PI*2);ctx.fill();ctx.stroke();}
   ctx.fillStyle='#506f64';ctx.font='16px serif';ctx.fillText('日 本 海',w*.49,h*.30);ctx.fillText('太 平 洋',w*.66,h*.69);
   ctx.fillStyle='#54746b';ctx.font='14px serif';ctx.fillText('沖縄',w*.15,h*.91);ctx.fillText('N',26,30);
   ctx.beginPath();ctx.moveTo(31,34);ctx.lineTo(26,51);ctx.lineTo(31,47);ctx.lineTo(36,51);ctx.closePath();ctx.fill();
   canvas.onclick=event=>{
     const box=canvas.getBoundingClientRect(),x=(event.clientX-box.left)*w/box.width,y=(event.clientY-box.top)*h/box.height;
     const nearest=markers.map(p=>[p,Math.hypot(x-p.xy[0],y-p.xy[1])]).sort((a,b)=>a[1]-b[1])[0];
-    if(nearest[1]<30)choose(nearest[0].id);
+    const pin=highlighted.map(p=>[p,Math.hypot(x-coords(p.lon,p.lat)[0],y-coords(p.lon,p.lat)[1])]).sort((a,b)=>a[1]-b[1])[0];
+    if(pin?.[0].pref&&pin[1]<12)choose(pin[0].pref);
+    else if(nearest[1]<30)choose(nearest[0].id);
   };
 }
 export const tileCredit='<a target="_blank" rel="noopener noreferrer" href="https://maps.gsi.go.jp/development/ichiran.html">出典：国土地理院（地理院タイル）</a>';
@@ -40,9 +44,9 @@ export function practicalMarkup(label) {
     <div class="tile-bar"><div class="map-keys"><button type="button" data-zoom="1" aria-label="地図を拡大">＋</button><button type="button" data-zoom="-1" aria-label="地図を縮小">−</button><button type="button" data-center>中心に戻る</button></div>${tileCredit}</div><small data-tile-status role="status"></small></div>`;
 }
 const mercator=([lat,lon],z)=>{const s=256*2**z,r=Math.sin(lat*Math.PI/180);return [(lon+180)/360*s,(.5-Math.log((1+r)/(1-r))/(4*Math.PI))*s];};
-export function practicalMap(el,center,{legs=[],zoom=11,fit=false}={}) {
+export function practicalMap(el,center,{legs=[],markers=[],zoom=11,fit=false}={}) {
   const canvas=el.querySelector('canvas'),ctx=canvas.getContext('2d'),memo=new Map();
-  const w=canvas.width,h=canvas.height, points=legs.flatMap(l=>l.coords);
+  const w=canvas.width,h=canvas.height, points=[...legs.flatMap(l=>l.coords),...markers.map(m=>m.coords)];
   if(fit && points.length){
     const bounds=points.reduce(([s,west,n,e],[lat,lon])=>[Math.min(s,lat),Math.min(west,lon),Math.max(n,lat),Math.max(e,lon)],[90,180,-90,-180]);
     center=[(bounds[0]+bounds[2])/2,(bounds[1]+bounds[3])/2];
@@ -68,8 +72,23 @@ export function practicalMap(el,center,{legs=[],zoom=11,fit=false}={}) {
     status.textContent=failed?'背景地図を読み込めません。通信環境をご確認ください。':'';
     const pos=p=>{const [x,y]=mercator(p,zoom);return [x-left,y-top];};
     for(const leg of legs){if(!leg.coords.length)continue;if(leg.mode==='point'){const [x,y]=pos(leg.coords[0]);ctx.fillStyle='#386947';ctx.fillRect(x-3,y-3,6,6);continue;}ctx.strokeStyle={bus:'#b55738',tram:'#285c83',rail:'#285c83',boat:'#765992',walk:'#386947'}[leg.mode];ctx.lineWidth=4;ctx.lineJoin='round';ctx.setLineDash(leg.mode==='walk'?[4,5]:[]);ctx.beginPath();leg.coords.forEach((p,i)=>ctx[i?'lineTo':'moveTo'](...pos(p)));ctx.stroke();}
-    ctx.setLineDash([]);const marks=points.length?[points[0],points.at(-1)]:[center];
-    marks.forEach((p,i)=>{const [x,y]=pos(p);ctx.beginPath();ctx.arc(x,y,7,0,Math.PI*2);ctx.fillStyle=i?'#aa543b':'#396353';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();});
+    ctx.setLineDash([]);
+    const marks=markers.length?markers:[{coords:center,kind:'saved'}];
+    const labels=[];
+    for(const mark of marks){
+      const [x,y]=pos(mark.coords);
+      if(x<0||x>w||y<0||y>h)continue;
+      ctx.beginPath();ctx.arc(x,y,mark.kind==='saved'?5:9,0,Math.PI*2);
+      ctx.fillStyle=({start:'#356255',end:'#a04e37',ride:'#315e7a',saved:'#356255'})[mark.kind]??'#765665';
+      ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+      if(mark.number){ctx.font='bold 11px sans-serif';ctx.fillStyle='#fff';ctx.textAlign='center';ctx.fillText(mark.number,x,y+4);ctx.textAlign='start';}
+      if(!mark.label)continue;
+      ctx.font='bold 13px sans-serif';
+      const width=ctx.measureText(mark.label).width+8, nx=Math.min(w-width-2,Math.max(2,x+12));
+      const ny=y-10;
+      if(labels.some(([a,b,c])=>nx<a+c&&nx+width>a&&Math.abs(ny-b)<20))continue;
+      labels.push([nx,ny,width]);ctx.fillStyle='#fff9ed';ctx.fillRect(nx,ny,width,18);ctx.fillStyle='#253d34';ctx.fillText(mark.label,nx+4,ny+13);
+    }
   }
   el.onclick=e=>{const btn=e.target.closest('button');if(!btn)return;if(btn.hasAttribute('data-center')){zoom=initialZoom;focus=mercator(center,zoom);}else{const next=Math.min(17,Math.max(5,zoom+Number(btn.dataset.zoom)));focus=focus.map(x=>x*2**(next-zoom));zoom=next;}draw();};
   canvas.onpointerdown=e=>{pointer={id:e.pointerId,x:e.clientX,y:e.clientY};canvas.setPointerCapture(e.pointerId);};

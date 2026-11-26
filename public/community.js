@@ -25,7 +25,7 @@ function followButton(profile) {
 }
 
 function safetyControls(profile) {
-  return `<details class="surface"><summary>サンプル投稿の表示設定</summary><div class="flow"><p>この端末での表示を選べます。ミュートすると広場から隠れ、ブロックすると詳細や保存一覧からも隠れます。</p><div class="actions">
+  return `<details class="surface"><summary>サンプル投稿の表示設定</summary><div class="flow"><p>この端末での表示を選べます。ミュートすると投稿一覧から隠れ、ブロックすると詳細や保存一覧からも隠れます。</p><div class="actions">
     ${[['mute','ミュート',profile.sampleMuted],['block','ブロック',profile.sampleBlocked]].map(([key,label,active])=>`<button type="button" class="chip" data-action="sample-safety" data-value="${key}" aria-pressed="${!!active}">${label}${active?'を解除':'する'}</button>`).join('')}</div></div></details>`;
 }
 
@@ -66,9 +66,9 @@ export function communityHome(params, profile, game={}) {
       <p>編集部のサンプルをフォローすると、ここに表示されます。</p>${followButton(profile)}
     </div>` : empty('見つかりませんでした','キーワードや #タグを変えてお試しください。');
   return `<section class="home-section community" aria-labelledby="community-title">
-    <div class="section-title community-title"><h1 id="community-title">旅人のひとこま</h1>
+    <div class="section-title community-title"><h1 id="community-title">みんなの旅</h1>
       ${link('#photos/new','投稿を書く','edit')}</div>
-    <div class="plaza-invitation"><span>${icon('send')}</span><div><h2>おともを募集する</h2><p>出発日と行き先を旅の掲示板に書く。</p></div>${link('#companions','おとも旅へ','arrow','text-link')}</div>
+
     <form id="community-search" class="search" data-feed="${tab}">
       <label><span class="visually-hidden">投稿やハッシュタグを検索</span><input type="search" name="q" value="${e(query)}" maxlength="80" placeholder="投稿・ #タグ を探す"></label>
       <button class="button button-outline">検索</button>
@@ -77,17 +77,17 @@ export function communityHome(params, profile, game={}) {
       ${[...communityTabs,['companions','おとも募集']].map(([id,label])=>`<a href="${e(homeUrl(id,query))}" class="feed-tab" ${id === tab ? 'aria-current="page"' : ''}>${label}</a>`).join('')}
     </nav>
     <div class="feed-meta"><p class="feed-note">${tab==='companions'?'この端末に保存した募集':'編集部のサンプル投稿'+(query ? ` · ${results.length}件` : '')}</p>
-      ${query ? link(homeUrl(tab),'検索をクリア',null,'text-link') : link('#opening-photo','ここは、どこ？',null,'text-link')}
+      ${query ? link(homeUrl(tab),'検索をクリア',null,'text-link') : tab==='companions'?link('#companions','募集を作る','send','text-link'):link('#saved?view=posts','保存した投稿','heart','text-link')}
     </div>
     ${cards}
     ${safetyControls(profile)}
-  </section><div class="home-tools">${link('#photos','投稿の下書き','edit','text-link')}${link('#discover','旅先を探す','compass','text-link')}${link('#nearby','寄り道を探す','pin','text-link')}${link('#stamps','旅のスタンプ帳','stamp','text-link')}</div>`;
+  </section><div class="home-tools">${link('#photos','投稿の下書き','edit','text-link')}${link('#companions','おとも旅','send','text-link')}</div>`;
 }
 
 export function communityDetail(post, from, profile) {
   const photo = photoFor(post.photoId);
   const returnTo = from === 'saved' ? '#saved?view=posts' : homeUrl(Object.hasOwn(labels, from) ? from : 'all');
-  if(profile.sampleBlocked)return `<section class="page flow"><h1>ブロック中のサンプル</h1>${safetyControls(profile)}${link('#home','広場へ','back')}</section>`;
+  if(profile.sampleBlocked)return `<section class="page flow"><h1>ブロック中のサンプル</h1>${safetyControls(profile)}${link('#home','みんなの旅へ','back')}</section>`;
   const reactions = profile.reactions?.[post.id] ?? [];
   return `<div class="page page-narrow reading">
     <p>${link(returnTo,from === 'saved' ? '保存した投稿へ' : '投稿一覧へ','back','text-link')}</p>

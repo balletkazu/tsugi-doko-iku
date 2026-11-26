@@ -2,7 +2,8 @@
 
 現実の旅で見つけたものを、もう一人の自分の家と絵日記に持ち帰る、スマートフォン向けの旅のRPGです。
 
-- [リニューアル版の試遊手順と実装範囲](docs/rpg-preview.md)
+- [自分の世界と旅の世界の試遊手順・検証](docs/two-worlds-preview.md)
+- [RPG化の試遊手順と実装範囲](docs/rpg-preview.md)
 - [作画ルールと素材のライセンス](docs/rpg-art.md)
 
 - [開発仕様書](docs/product-spec.md)

@@ -8,7 +8,7 @@ import { editorial, reactionTypes } from './community-data.js';
 import { photoFigure, photoFor } from './photos.js';
 import { createGallery } from './gallery.js';
 import { openingPhotoPage, showFirstOpening, showOpening } from './opening.js';
-import { mailbox, medalPage, milestones, playRoomSound, roomMotion, roomScreen, roomSettings } from './room.js';
+import { mailbox, medalPage, milestones, playRoomSound, roomMotion, roomSettings } from './room.js';
 import { travelerRanking } from './traveler-quiz.js';
 import { allQuestions, fortunePage, mountFortune } from './fortune.js';
 import { loadToyamaPilot, pilotPage } from './transit-pilot.js';
@@ -24,10 +24,16 @@ const notice = document.querySelector('#notice');
 let lastScreen;
 let pilot, pilotLoading, pilotRequest;
 const gallery = createGallery(view,{go,notify:toast});
-const world = createWorld(view,{go,notify:toast,profile:()=>state.profile,onRecords:records=>{state.data=records;}});
+const world = createWorld(view,{go,notify:toast,profile:()=>state.profile,records:()=>state.data,onRecords:records=>{state.data=records;}});
 let closeRouteMaps=()=>{};
-const worldPages = new Set(['village','welcome','avatar','cottage','decorate','atlas','trail','activity','memories','menu','shop','companions','cabinet']);
-const tabs = [['village','街','home'],['atlas','地図','compass'],['cottage','自分の家','book'],['menu','メニュー','route']];
+const worldPages = new Set(['village','welcome','avatar','cottage','decorate','atlas','trail','activity','memories','shop','companions','cabinet']);
+const tabs = [['cottage','自分の世界','home'],['home','みんなの旅','heart'],['atlas','日本地図','compass'],['plan','旅の計画','route']];
+const tabSections = {
+  cottage:'village welcome avatar decorate memories medals shop cabinet mail room-settings opening-photo',
+  home:'story photos companions saved',
+  atlas:'trail stamps discover place nearby type',
+  plan:'pilot route trip journal my menu about activity'
+};
 const state = { profile:{}, data:{trips:[], journals:[]}, nearby:null, route:null };
 let toastTimer;
 let pending = false;
@@ -41,7 +47,7 @@ function toast(message) {
 }
 
 function currentLocation() {
-  const [path, search] = (location.hash.slice(1) || 'village').split(/\?(.*)/s, 2);
+  const [path, search] = (location.hash.slice(1) || (world.snapshot().started ? 'cottage' : 'welcome')).split(/\?(.*)/s, 2);
   const [screen, id, edit] = path.split('/');
   return { screen, id, edit, params:new URLSearchParams(search) };
 }
@@ -53,8 +59,7 @@ const back = (url, label) => `<p class="no-print">${link(url,label,'back','text-
 const placeLabel = place => `${place.name} ${place.region}`;
 
 function setNav(screen) {
-  const groups={welcome:'village',avatar:'cottage',decorate:'cottage',trail:'atlas',activity:'village',memories:'cottage',home:'village',story:'village'};
-  const parent=groups[screen]??(tabs.some(([id])=>id===screen)?screen:'menu');
+  const parent = tabs.find(([id]) => id === screen || tabSections[id].split(' ').includes(screen))?.[0];
   nav.innerHTML = tabs.map(([id,label,glyph])=>`<a href="#${id}" class="nav-link" ${parent === id ? 'aria-current="page"' : ''}>${icon(glyph)}<span>${label}</span></a>`).join('');
 }
 
@@ -105,10 +110,26 @@ function nearby(params) {
   return page('寄り道を探す','現在地か気になる旅先を基準に、立ち寄れそうな場所を探す。',`<form id="nearby-form" class="surface flow"><label>基準にする旅先<select name="anchor"><option value="">旅先を選ぶ</option>${places.map(place=>`<option value="${place.id}" ${anchorId===place.id?'selected':''}>${place.name}（${place.region}）</option>`).join('')}</select></label><div class="actions"><button class="button">周辺を探す</button><button class="button button-outline" type="button" data-action="location">${icon('pin')}現在地から探す</button></div><p class="muted">現在地は候補の計算にだけ使い、保存・送信しません。</p><p id="nearby-message" class="muted" role="status" hidden></p></form>${output}`,{narrow:true,eyebrow:'Take a detour'});
 }
 
-function myTravel(params) {
-  const { trips, journals } = state.data;
-  const list = `<div class="flow"><section class="surface flow"><div class="section-title"><div><h2>旅の栞</h2><p class="section-intro">旅程や地図を一つにまとめる。</p></div>${link('#trip/new','栞を作る','arrow')}</div>${recordList(trips,'trip','まだ栞がありません。')}</section><section class="surface flow"><div class="section-title"><div><h2>旅の日記</h2><p class="section-intro">その日の写真と気持ちを、自分だけの記録に。</p></div>${link('#journal/new','日記を書く','edit')}</div>${recordList(journals,'journal','まだ日記がありません。')}</section><section class="surface flow"><h2>旅のスタンプ帳</h2><p class="muted">訪ねた都道府県や名所のスタンプを集める。</p>${link('#stamps','スタンプ帳を開く','stamp','button button-outline')}</section><section class="surface flow"><h2>旅人タイプ</h2><p class="muted">好きな旅を選ぶと、発見で近いテーマを先に表示します。</p><form id="traveler-form" class="flow"><label>好みのタイプ<select name="type"><option value="">おまかせ</option>${travelerTypes.map(item=>`<option value="${item.name}" ${state.profile.traveler===item.name?'selected':''}>${item.name} — ${item.description}</option>`).join('')}</select></label><button class="button button-outline">好みを保存する</button></form></section><div class="actions">${link('#saved','保存した旅先と投稿','heart','button button-outline')}${link('#type','旅人タイプの診断を開く','arrow','text-link')}${link('#about','データと公開範囲について','arrow','text-link')}</div></div>`;
-  return roomScreen(state.profile,params.get('view'),list);
+function travelPlan(params) {
+  const diary = params.get('view') === 'journal';
+  return page('旅の計画','',`<div class="travel-shortcuts">
+    ${link('#pilot','富山市の乗換案内','route')}
+    ${link('#activity','旅を記録','edit','button button-outline')}
+    ${link('#route','富山以外の行き方','pin','text-link')}
+  </div>
+  <nav class="travel-tabs" aria-label="自分の旅の記録">
+    <a href="#plan" ${!diary?'aria-current="page"':''}>旅のしおり</a>
+    <a href="#plan?view=journal" ${diary?'aria-current="page"':''}>自分の旅日記</a>
+  </nav>
+  <section class="travel-collection flow">
+    <div class="section-title"><h2>${diary?'旅の日記':'旅のしおり'}</h2>
+      ${link(diary?'#journal/new':'#trip/new',diary?'日記を書く':'しおりを作る','edit','button button-outline')}</div>
+    ${diary?recordList(state.data.journals,'journal','日記はまだありません。'):recordList(state.data.trips,'trip','しおりはまだありません。')}
+    ${diary?link('#memories','写真と体験の絵日記','book','text-link'):''}
+  </section>
+  <details class="travel-secondary"><summary>アプリの設定と案内</summary>
+    <div class="travel-shortcuts">${link('#room-settings','音と動き','edit','text-link')}${link('#welcome','最初の案内','book','text-link')}${link('#about','データと公開範囲','arrow','text-link')}</div>
+  </details>`,{narrow:true});
 }
 
 function recordList(items,type,placeholder) {
@@ -134,7 +155,7 @@ function render({ navigate = false } = {}) {
   const turningStamps = screen === 'stamps' && lastScreen === 'stamps';
   const screens = {
     home:()=>communityHome(params,state.profile,world.snapshot()), discover:()=>discover(params), place:()=>placeDetail(id), story:()=>storyDetail(id,params), route:()=>route(params), nearby:()=>nearby(params),
-    my:()=>myTravel(params), trip:()=>recordScreen('trip',id,edit,state.data), journal:()=>recordScreen('journal',id,edit,state.data), stamps:()=>stampScreen(id,params,state.profile,world.snapshot()), about,
+    plan:()=>travelPlan(params), my:()=>travelPlan(params), menu:()=>travelPlan(params), trip:()=>recordScreen('trip',id,edit,state.data), journal:()=>recordScreen('journal',id,edit,state.data), stamps:()=>stampScreen(id,params,state.profile,world.snapshot()), about,
     saved:()=>savedPage(params), 'opening-photo':openingPhotoPage,
     photos:()=>gallery.screen(id,edit), type:fortunePage,
     medals:()=>medalPage(state.profile,state.data), mail:()=>mailbox(state.profile,state.data),
@@ -296,13 +317,6 @@ view.addEventListener('click', event => {
   const {action,id,value,type} = button.dataset;
   if (action === 'replay-opening') {
     showOpening(()=>go('#opening-photo'));
-  } else if (action === 'room-layout' && ['room','list'].includes(value)) {
-    write(async()=>{
-      state.profile = await update('profile',(profile = {})=>({...profile,roomLayout:value}));
-      if (currentLocation().screen !== 'my') return;
-      if (currentLocation().params.has('view')) history.replaceState(null,'','#my');
-      refreshControl(button);
-    },button);
   } else if (action === 'claim-medal') {
     const medal = milestones.find(item=>item.id===id);
     if (!medal?.isEarned(state.profile,state.data) || (state.profile.medals ?? []).includes(id)) return;
@@ -371,7 +385,7 @@ view.addEventListener('click', event => {
     write(async()=>{
       const key = recordGroup(type);
       state.data = await update('records',(data = {trips:[],journals:[]})=>({...data,[key]:data[key].filter(item=>item.id !== id)}));
-      go('#my');
+      go(type==='trip'?'#plan':'#plan?view=journal');
       toast('記録を削除しました。');
     },button);
   } else if (action === 'clear' && confirm('このブラウザーの旅人、自宅、絵日記、写真、栞、スタンプなど、すべての記録を消去しますか？')) {
@@ -384,7 +398,7 @@ view.addEventListener('click', event => {
       pilotRequest = undefined;
       gallery.reset();
       world.load({});
-      go('#village');
+      go('#cottage');
       toast('この端末のアプリ記録を消去しました。');
     },button);
   }

@@ -36,9 +36,10 @@ const newStories=[
 ];
 export const allQuestions=[...questions,...newStories.map(([q,...labels],i)=>[q,labels.map((label,j)=>[types[j],label]).sort((a,b)=>(types.indexOf(a[0])+i)%4-(types.indexOf(b[0])+i)%4)])];
 const avatarBadge=name=>`<span aria-hidden="true" class="relic-tile relic-${illustration[types.indexOf(name)]}"></span>`;
+const quizArt=(step,option)=>`quiz-sheet-${step<5?1:2} quiz-cell-${(step%5)*4+option}`;
 const scene=`<div class="fortune-scene"><img src="./assets/world/fortune.webp" alt="月の見える丸窓と、ランプを灯して待つ占い師"></div>`;
 export function fortunePage(){
-  return `<section class="world fortune"><header class="dressing-header"><a href="#village" aria-label="街へ戻る">‹</a><h1>月灯りの占いの館</h1><a class="fortune-leave" href="#discover">旅先へ</a></header>${scene}<div data-fortune></div></section>`;
+  return `<section class="world fortune"><header class="dressing-header"><a href="#atlas" aria-label="日本地図へ戻る">‹</a><h1>旅の好み診断</h1><a class="fortune-leave" href="#discover">旅先へ</a></header>${scene}<div data-fortune></div></section>`;
 }
 export function mountFortune(root,{profile,activityThemes,save}){
   const view=root.querySelector('[data-fortune]');if(!view)return;
@@ -46,13 +47,13 @@ export function mountFortune(root,{profile,activityThemes,save}){
   let original=[...(profile.quiz??[])];
   const consent=()=>`<details class="fortune-consent"><summary>旅の記録を使うか選ぶ</summary><label><input type="checkbox" data-consent="saved" ${bookmarks?'checked':''}>保存した旅先のテーマを使う</label><label><input type="checkbox" data-consent="activity" ${activity?'checked':''}>自分で記録した体験の種類を使う</label><p>日記・写真・位置情報は使いません。</p></details>`;
   function welcome(){
-    view.innerHTML=`<div class="fortune-letter"><small>占い師・灯（あかり）</small><h2>おかえりなさい、旅人さん。</h2><p>湖の水面に、あなたが好きな旅のかたちが映ります。気になる絵を選んで、旅の話を聞かせてください。</p><div class="world-actions"><button type="button" class="world-btn" data-length="10">短い話 · 10問</button><button type="button" class="world-btn alt" data-length="32">ゆっくり話す · 32問</button>${original.length?`<button type="button" class="world-text" data-fortune-action="review">前の結果を見る</button>`:''}</div><small>遊びの自己発見としてお楽しみください。</small></div>`;
+    view.innerHTML=`<div class="fortune-letter"><small>占い師・灯（あかり）</small><h2>おかえりなさい、旅人さん。</h2><p>湖の水面に、あなたが好きな旅のかたちが映ります。気になる絵を選んで、旅の話を聞かせてください。</p><div class="world-actions"><button type="button" class="world-btn" data-length="10">絵を選ぶ · 10問</button>${original.length?`<button type="button" class="world-text" data-fortune-action="review">前の結果を見る</button>`:''}</div><small>遊びの自己発見としてお楽しみください。</small></div>`;
   }
   function next(focus=false){
     if(step===max){result(false);return;}
     const [q,choices]=allQuestions[step];
-    view.innerHTML=`<article class="fortune-letter"><div class="fortune-progress"><span>${step+1} / ${max}</span><progress value="${step+1}" max="${max}"></progress><button type="button" data-fortune-action="back" class="world-text">戻る</button></div><h2 tabindex="-1">${q}</h2>
-      <div class="omen-choices">${choices.map(([type,label])=>`<button type="button" data-omen="${type}" ${answers[step]===type?'aria-pressed="true"':''}>${avatarBadge(type)}<span>${label}</span></button>`).join('')}</div></article>`;
+    view.innerHTML=`<article class="fortune-letter"><div class="fortune-progress"><span>${step+1} / ${max}</span><progress value="${step+1}" max="${max}"></progress><button type="button" data-fortune-action="back" class="world-text">戻る</button></div><span class="fortune-question-picture ${quizArt(step,0)}" aria-hidden="true"></span><h2 tabindex="-1">${q}</h2>
+      <div class="omen-choices">${choices.map(([type,label],i)=>`<button type="button" data-omen="${type}" ${answers[step]===type?'aria-pressed="true"':''}><span class="quiz-art ${quizArt(step,step<questions.length?i:types.indexOf(type))}" aria-hidden="true"></span><span>${label}</span></button>`).join('')}</div></article>`;
     if(focus)view.querySelector('h2').focus({preventScroll:true});
   }
   function result(previous){

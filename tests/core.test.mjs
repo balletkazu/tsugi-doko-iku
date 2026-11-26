@@ -347,7 +347,7 @@ test('regional keepsakes match precise user-entered activities rather than an ad
   assert.deepEqual(keepsakesFor({pref:'JP-18',place:'立山',activity:'hike'}),[]);
   assert.deepEqual(keepsakesFor({pref:'JP-16',place:'氷見',activity:'walk'}),[]);
 });
-test('32 illustrated fortune prompts rank the same four types with response consent applied separately',async()=>{
+test('legacy 32-question results rank the same four types with response consent applied separately',async()=>{
   const {allQuestions}=await import('../public/fortune.js');
   assert.equal(allQuestions.length,32);
   assert.equal(new Set(allQuestions.map(([question])=>question)).size,32);
@@ -355,4 +355,30 @@ test('32 illustrated fortune prompts rank the same four types with response cons
   const answers=allQuestions.map(([,choices])=>choices.find(([type])=>type==='ネイチャーラバー')[0]);
   assert.equal(travelerRanking(answers,[],allQuestions)[0].score,128);
   assert.equal(travelerRanking(answers,['アート','自然'],allQuestions)[0].score,129);
+});
+
+test('room and garden project the same furniture anchors they hit, with room for wall items',async()=>{
+  const {homeAreas,homeProjection,canPlace,homePath}=await import('../public/home-layout.js');
+  for(const area of Object.values(homeAreas)){
+    const {toPlane,fromPlane,visible}=homeProjection(area);
+    const corners=[[0,0],[area.width,0],[0,area.height],[area.width,area.height],[3.5,2.5]];
+    for(const point of corners)assert.ok(fromPlane(toPlane(point)).every((axis,i)=>Math.abs(axis-point[i])<1e-8));
+    assert.ok(visible(0)<visible(1));
+  }
+  const chair={id:'seat',kind:'chair',x:4,y:3,r:0},frame={id:'painting',kind:'frame',x:4,y:3,r:0};
+  assert.equal(canPlace('room',[chair],frame),true);
+  assert.equal(canPlace('room',[frame],{...frame,id:'another'}),false);
+  assert.deepEqual(homePath('room',[frame],[4,4],[[4,3]]),[[4,3]]);
+});
+
+test('the Toyama overview numbers real boarding and alighting points in itinerary order',async()=>{
+  const {loadToyamaPilot,journeyMarkers}=await import('../public/transit-pilot.js');
+  const data=await loadToyamaPilot();
+  const {default:geometry}=await import('../public/data/toyama-geometry.js');
+  const legs=[{mode:'walk',from:2,to:18},{mode:'ride',from:18,to:20},{mode:'walk',from:20,to:24},{mode:'ride',from:24,to:26},{mode:'walk',from:26,to:30}];
+  const markers=journeyMarkers(data,legs);
+  assert.deepEqual(markers.map(marker=>marker.kind),['start','ride','transfer','ride','transfer','end']);
+  assert.deepEqual(markers.map(marker=>marker.number),[1,2,3,4,5,6]);
+  assert.deepEqual(markers[3].coords,geometry.stops[24]);
+  assert.ok(markers.every(marker=>Boolean(marker.label)));
 });

@@ -10,8 +10,8 @@ export const furnishings={
   plant:{name:'窓辺の鉢植え',art:4,w:1,h:1},fern:{name:'シダの鉢',art:4,w:1,h:1},
   rug:{name:'夕焼けの織物',art:5,w:2,h:2,flat:true},lamp:{name:'山小屋のランプ',art:6,w:1,h:1},
   lantern:{name:'星あかりの灯籠',art:6,w:1,h:1},bench:{name:'庭のベンチ',art:7,w:2,h:1,pose:'sit',line:'庭を眺めて、ひと休み。'},
-  pond:{name:'睡蓮の小池',art:8,w:2,h:2,outside:true},greenhouse:{name:'小さな温室',art:9,w:2,h:2,outside:true},
-  stream:{name:'石を並べた小川',art:10,w:3,h:1,outside:true}
+  pond:{name:'睡蓮の小池',art:8,w:2,h:2,outside:true,groundArt:true},greenhouse:{name:'小さな温室',art:9,w:2,h:2,outside:true},
+  stream:{name:'石を並べた小川',art:10,w:3,h:1,outside:true,groundArt:true}
 };
 const starters=['bed','shelf','tea','chair','plant','rug','bench','pond','greenhouse','stream','lamp'];
 export const homeAreas={
@@ -20,6 +20,23 @@ export const homeAreas={
   studio:{name:'小さな離れ',width:9,height:7,arrival:[4,6],outside:false,addition:true},
   orchard:{name:'奥の庭',width:12,height:9,arrival:[5,0],outside:true,addition:true}
 };
+
+export function homeProjection(spec){
+  const width=spec.outside?1020:780,height=spec.outside?640:570;
+  const top=height*(spec.outside?.37:.55),bottom=height*.96;
+  const visible=depth=>width*(spec.outside?.78+depth*.20:.69+depth*.29);
+  const toPlane=([x,y])=>{
+    const t=y/spec.height, span=visible(t);
+    return [(width-span)/2+x/spec.width*span,top+(bottom-top)*t*(.64+.36*t)];
+  };
+  const fromPlane=([x,y])=>{
+    const scaled=(y-top)/(bottom-top);
+    const depth=(-.64+Math.sqrt(Math.max(0,.64**2+1.44*scaled)))/.72;
+    const span=visible(depth);
+    return [(x-(width-span)/2)*spec.width/span,depth*spec.height];
+  };
+  return {width,height,top,toPlane,fromPlane,visible};
+}
 export const coverings={
   walls:[['クリーム',null],['黄昏','#b77853'],['若葉','#819764'],['白樺','#b5bcb0']],
   floor:[['蜂蜜の板張り',null],['胡桃','#714438'],['白木','#d8c7aa'],['青緑','#70918a']],
@@ -36,7 +53,7 @@ const available={
 export const coveringsFor=area=>available[area];
 export const furniture=id=>Object.hasOwn(furnishings,id)?furnishings[id]:Object.hasOwn(regionalItems,id)?
   {name:regionalItems[id].name,art:regionalItems[id].art,icon:regionalItems[id].icon,w:1,h:1}:
-  Object.hasOwn(items,id)?{name:items[id],w:1,h:1}:null;
+  Object.hasOwn(items,id)?{name:items[id],w:1,h:1,wall:['frame','ticket'].includes(id)}:null;
 export const homeStock=game=>[...new Set([...starters,...inventory(game),...(game.localFinds??[])])];
 export function readHome(game){
   if(game.homestead)return game.homestead;
@@ -60,9 +77,10 @@ export function canPlace(area,placed,item){
   if(!spec||!model||model.outside&&!spec.outside||![item.x,item.y,item.r].every(Number.isInteger)||item.r<0||item.r>3)return false;
   const [w,h]=footprint(item);
   if(item.x<0||item.y<0||item.x+w>spec.width||item.y+h>spec.height)return false;
-  if(!model.flat&&covers(item,spec.arrival[0],spec.arrival[1]))return false;
+  if(!model.flat&&!model.wall&&covers(item,spec.arrival[0],spec.arrival[1]))return false;
   return placed.every(other=>{
-    if(other.id===item.id||!!model.flat!==!!furniture(other.kind).flat)return true;
+    const target=furniture(other.kind);
+    if(other.id===item.id||!!model.wall!==!!target.wall||!!model.flat!==!!target.flat)return true;
     const [ow,oh]=footprint(other);
     return item.x+w<=other.x||other.x+ow<=item.x||item.y+h<=other.y||other.y+oh<=item.y;
   });
@@ -73,7 +91,7 @@ function covers(item,x,y){
 }
 export function homePath(area,placed,from,destinations){
   const {width,height}=homeAreas[area];
-  const blocks=placed.filter(item=>!furniture(item.kind).flat);
+  const blocks=placed.filter(item=>!furniture(item.kind).flat&&!furniture(item.kind).wall);
   const valid=(x,y)=>x>=0&&y>=0&&x<width&&y<height&&!blocks.some(item=>covers(item,x,y));
   const targets=new Set(destinations.filter(([x,y])=>valid(x,y)).map(([x,y])=>y*width+x));
   if(!targets.size)return null;

@@ -53,7 +53,11 @@ export function mountDressing(root,initial,{looks=[],saveLook}={}){
         const source=document.createElement('canvas');source.width=source.height=128;source.dataset.doll='1';
         character(source,look);
         canvas.getContext('2d').drawImage(source,27,6,74,64,0,0,88,76);
-      }else {canvas.dataset.doll='1';character(canvas,look,part==='pose'?value:'look',3);}
+      }else if(part==='outfit'||part==='layer'||part==='pattern'||part==='material'){
+        const source=document.createElement('canvas');source.width=source.height=128;
+        character(source,{...look,accessory:0,bag:0},'look',0);
+        canvas.getContext('2d').drawImage(source,28,56,72,64,0,3,88,78);
+      }else character(canvas,look,part==='pose'?value:'look',3);
     }
   }
   function renderOptions(){

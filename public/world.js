@@ -1,4 +1,5 @@
 import {escapeHtml as e} from './core.js';
+import {entryKinds} from './stamp-book.js';
 import {icon} from './ui.js';
 import {places} from './data.js';
 import {update,importPhoto} from './storage.js';
@@ -6,7 +7,7 @@ import {avatarDefaults,avatarFrom,activities,prefectures,regions,inventory,items
 import {homesteadScreen,mountHomestead} from './homestead.js';
 import {readHome,validateHome} from './home-layout.js';
 import {cabinetScreen,proposal,exportProposal,relicArt} from './cabinet.js';
-import {keepsakesFor,regionalItems,activityEvents,eventFor} from './regional-data.js';
+import {keepsakesFor,regionalItems,eventFor} from './regional-data.js';
 import {travelerAssets} from './traveler-art.js';
 import {dressingRoom,mountDressing} from './dressing-room.js';
 import {gameStage,mountStage} from './game-stage.js';
@@ -16,16 +17,10 @@ import {nearbyTransport,toyamaMobility} from './mobility.js';
 import {playRoomSound} from './room.js';
 import {atlas,practicalMap,practicalMarkup} from './world-map.js';
 
-const destinations=[
-  ['#home','広場','旅人の写真と投稿','heart'],['#pilot','駅','富山市の乗換案内','route'],['#discover','旅行案内所','旅先と寄り道','compass'],
-  ['#my?view=list','図書館','日記と旅の栞','book'],['#photos','アトリエ','写真の取り込み・投稿下書き','edit'],
-  ['#stamps','博物館','訪問スタンプ帳','stamp'],['#companions','おとも旅','旅の募集とおみやげ','send'],['#mail','郵便局','旅のお知らせ','send'],['#shop','旅の店','コイン・歩数・道具','stamp'],['#memories','美術館','自分の旅の絵日記','pin'],['#cabinet','冒険図鑑','土地の記念品と提案','book']
-];
 const guideText=['はじめまして！','この世界には、まだあなたの知らない場所がたくさんあります。','これから一緒に、いろんな場所へ旅に出て、いろんなものに出会いましょう。'];
 const person=(pose='look',extra='')=>`<canvas data-person data-pose="${pose}" width="96" height="96" aria-hidden="true" ${extra}></canvas>`;
 const btn=(op,label,cls='world-btn')=>`<button type="button" data-world="${op}" class="${cls}">${label}</button>`;
 const a=(url,label,cls='world-btn alt')=>`<a href="${e(url)}" class="${cls}">${label}</a>`;
-const stepLink=(url,name,sub,glyph)=>`<a href="${e(url)}" class="world-door"><i>${icon(glyph)}</i><span><strong>${name}</strong><small>${sub}</small></span><b aria-hidden="true">›</b></a>`;
 const frame=(label,title,body)=>`<section class="world"><header class="world-heading"><div><p>${label}</p><h1>${title}</h1></div><span class="compass-seal" aria-hidden="true">✧</span></header>${body}</section>`;
 const art=(kind,inside='',variant=kind)=>`<div class="world-scene ${kind}"><img src="./assets/world/${variant}.webp" width="900" height="450" alt="${{north:'雪山と冬の白樺林',spring:'桜並木と列車の走る橋',maple:'紅葉の谷にある鳥居',island:'夏の島の砂浜と小さな船',village:'海を望む街。線路の橋を小さな列車が渡る',cottage:'木の床と、草花を飾った丸窓のある家',trail:'野花の咲く道から島々と山並みを望む'}[variant]}">${inside}</div>`;
 const characterSpot=(pose,extra='')=>`<div class="scene-person">${person(pose,extra)}</div>`;
@@ -38,7 +33,7 @@ const guideFooter=()=>btn('skip','案内をスキップ','world-text');
 const where=(entry)=>[byId(entry.pref)?.name,entry.place].filter(Boolean).join('・')||'旅先';
 const entryText=(entry)=>`${where(entry)}で${activities[entry.activity][0]}を体験した。${items[activities[entry.activity][2]]}を旅の記念に持ち帰った。`;
 
-export function createWorld(root,{go,notify,profile,onRecords}){
+export function createWorld(root,{go,notify,profile,records,onRecords}){
   let game={},clean=()=>{},busy=false,detected=null,stopLocation=()=>{},stopMotion=()=>{},motionActive=false,motionHint='';
   const avatar=()=>({...avatarFrom(game.avatar??avatarDefaults),pin:inventory(game).includes(game.pin)?game.pin:null});
   const entries=()=>game.entries??[];
@@ -66,39 +61,89 @@ export function createWorld(root,{go,notify,profile,onRecords}){
   function episode(id){
     const record=entries().find(entry=>entry.id===id);
     const event=record?eventFor(record.activity,record.interest):null;
-    if(!event)return '';
-    const [title,description,pose,hint]=event,relief=(record.finds??[]).map(key=>regionalItems[key]).filter(Boolean);
-    return `<section class="episode">${person(pose)}<div><h2>${title}</h2><p>${description}</p>${hint?`<small>${hint}</small>`:''}${relief.map(item=>`<div class="episode-keepsake">${relicArt(item)}<span>${e(item.name)}が図鑑に届きました。</span></div>`).join('')}</div>${relief.length?a('#cabinet','図鑑をひらく','world-text'):''}</section>`;
+    if(!record)return '';
+    const [title,description,,hint]=event??['旅の思い出が届きました','絵日記にこの日の思い出を残しました。'];
+    const receipt=record.reward;
+    const relief=(receipt?.finds??record.finds??[]).map(key=>regionalItems[key]).filter(Boolean);
+    return `<section class="episode">${person(!receipt||receipt.item||receipt.coins||relief.length?'joy':'look')}<div><h2>${title}</h2><p>${description}</p>
+      ${receipt?.item||receipt?.coins?`<p class="episode-reward">${receipt.item?e(items[receipt.item]):''}${receipt.item&&receipt.coins?' · ':''}${receipt.coins?receipt.coins+' 旅コイン':''}を受け取りました。</p>`:''}${hint?`<small>${hint}</small>`:''}${relief.map(item=>`<div class="episode-keepsake">${relicArt(item)}<span>${e(item.name)}が図鑑に届きました。</span></div>`).join('')}</div>${relief.length?a('#cabinet','図鑑をひらく','world-text'):''}</section>`;
+  }
+  const mapFilters={visited:'訪問済み',saved:'行きたい場所',journal:'旅の記録'};
+  function journalsFor(pref){
+    return (records().journals??[]).filter(journal=>{
+      const place=journal.place?.trim()??'';
+      const known=places.find(item=>item.name===place);
+      return place.startsWith(pref.name)||known?.region.split('・').includes(pref.name);
+    });
+  }
+  function pins(filter){
+    if(filter==='saved')return places.filter(p=>(profile().saved??[]).includes(p.id)).map(p=>({lat:p.lat,lon:p.lng,label:p.name,pref:prefectures.find(x=>p.region.split('・').includes(x.name))?.id}));
+    return prefectures.filter(p=>filter==='journal'?(entries().some(entry=>entry.pref===p.id)||journalsFor(p).length>0):entryKinds(profile(),'JP/prefecture/'+p.id,p,game).some(x=>x.kind==='self'||x.kind==='gps')).map(p=>({...p,label:p.name,pref:p.id}));
   }
   function mapPage(params){
-    const pref=byId(params.get('pref'))??byId(game.lastPref)??prefectures[15], real=params.get('view')==='map',guided=params.get('guide')==='1';
-    const url=(view,p=pref.id)=>'#atlas?'+new URLSearchParams({pref:p,...(view?{view}:{}),...(guided?{guide:'1'}:{})});
-    const explored=(game.explored??[]).includes(pref.id);
-    return frame('旅の手帖','日本の旅地図',`<div class="atlas-card"><div class="map-tabs">${a(url(''),'絵地図',real?'':'active')}${a(url('map'),'実用地図',real?'active':'')}</div>
+    const pref=byId(params.get('pref'))??byId(game.lastPref)??prefectures[15],real=params.get('view')==='map',guided=params.get('guide')==='1';
+    const filter=Object.hasOwn(mapFilters,params.get('show'))?params.get('show'):'visited';
+    const url=(view,show=filter)=>'#atlas?'+new URLSearchParams({pref:pref.id,show,...(view?{view}:{}),...(guided?{guide:'1'}:{})});
+    const markers=pins(filter), local=markers.filter(p=>p.pref===pref.id);
+    const visited=local.length&&filter==='visited';
+    const saved=places.filter(p=>(profile().saved??[]).includes(p.id)&&p.region.split('・').includes(pref.name));
+    const recall=entries().filter(entry=>entry.pref===pref.id);
+    const list=filter==='saved'?saved.map(p=>a('#place/'+p.id,e(p.name),'world-text')).join(''):
+      filter==='journal'?[
+        ...recall.map(entry=>a('#memories?pref='+pref.id,e(where(entry)),'world-text')),
+        ...journalsFor(pref).map(entry=>a('#journal/'+e(entry.id),e(entry.title),'world-text'))
+      ].join(''):'';
+    return `<section class="page atlas-page"><header class="page-title"><h1>日本地図</h1></header>
+      <nav class="travel-tabs" aria-label="地図に表示する記録">${Object.entries(mapFilters).map(([id,label])=>`<a href="${e(url(real?'map':'',id))}" ${id===filter?'aria-current="page"':''}>${label}</a>`).join('')}</nav>
+      <div class="atlas-card"><div class="map-tabs">${a(url(''),'絵地図',real?'':'active')}${a(url('map'),'実用地図',real?'active':'')}</div>
       ${real?practicalMarkup(pref.name+'の実用地図'):`<canvas id="japan-map" width="600" height="490" role="img" aria-label="日本列島の絵地図。下の一覧から都道府県を選択できます"></canvas>`}
-      <div class="atlas-foot"><label>行き先<select id="pref-choice">${selectPref(pref.id)}</select></label><span>${explored?'散策済み':'未散策'}</span></div></div>
-      <div class="letter"><h2>${e(pref.name)}</h2><p>絵地図での散策は「仮想の旅」に残ります。</p><div class="world-actions">${btn('explore','ここを散策する　→')}${guided?guideFooter():a('#memories','旅の足あと','world-text')}</div></div>
-      <small class="map-credit">絵地図の地形　<a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth</a> · 目印は県庁所在地付近</small>`);
+      <div class="atlas-foot"><label>都道府県<select id="pref-choice">${selectPref(pref.id)}</select></label><span>${mapFilters[filter]} ${markers.length}件</span></div></div>
+      <section class="travel-collection"><h2>${e(pref.name)}</h2>${visited?'<p class="muted">訪問記録があります。</p>':''}
+      ${list?`<div class="world-actions">${list}</div>`:filter!=='visited'?'<p class="muted">この都道府県の記録はまだありません。</p>':''}
+      <div class="world-actions">${a('#stamps/prefecture?item='+pref.id,'スタンプを見る')}${a('#discover','旅先を探す','world-text')}${a('#nearby','寄り道','world-text')}</div>
+      <details class="travel-secondary"><summary>この地域でできること</summary><div class="world-actions">${btn('explore','ここを散策する　→','world-btn alt')}${guided?guideFooter():a('#type','旅の好み診断','world-text')}</div></details></section>
+      <small class="map-credit">絵地図の地形　<a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth</a> · 都道府県の印は県庁所在地付近</small></section>`;
   }
   function trail(id){
     const p=byId(id)??prefectures[15];
-    return frame('仮想の旅',p.name+'を散策',art('trail',characterSpot('walk'),({'北海道':'north','東北':'north','関東':'spring','中部':'spring','近畿':'maple','中国':'maple','四国':'island','九州・沖縄':'island'})[p.region])+`<div class="world-actions">${[['walk','小道を歩く'],['photo','カメラを構える'],['sit','ひと休み']].map(([pose,label])=>`<button type="button" class="world-btn alt" data-world="field-action" data-pose="${pose}">${label}</button>`).join('')}</div><p id="field-voice" role="status"></p><section class="letter"><div class="stamp-row">${stamp(p.name)}<div><small>散策のしるし</small><h2>${p.name}の一頁</h2></div></div><p>地方と四季をもとに描いた創作の風景です。この印は仮想の旅の記録です。</p><div class="world-actions">${a('#atlas?pref='+p.id,'地図に戻る','world-btn')}${a('#village','街へ帰る')}</div></section>`);
+    return frame('仮想の旅',p.name+'を散策',art('trail',characterSpot('walk'),({'北海道':'north','東北':'north','関東':'spring','中部':'spring','近畿':'maple','中国':'maple','四国':'island','九州・沖縄':'island'})[p.region])+`<div class="world-actions">${[['walk','小道を歩く'],['photo','カメラを構える'],['sit','ひと休み']].map(([pose,label])=>`<button type="button" class="world-btn alt" data-world="field-action" data-pose="${pose}">${label}</button>`).join('')}</div><p id="field-voice" role="status"></p><section class="letter"><div class="stamp-row">${stamp(p.name)}<div><small>散策のしるし</small><h2>${p.name}の一頁</h2></div></div><p>地方と四季をもとに描いた創作の風景です。この印は仮想の旅の記録です。</p><div class="world-actions">${a('#atlas?pref='+p.id,'地図に戻る','world-btn')}${a('#cottage','自分の世界へ')}</div></section>`);
   }
   function activity(){
-    return frame('現実の旅・自分だけ','体験を持ち帰る',`<div class="sensor-card"><h2>いま、何をしている？</h2><p>測位中だけ速度と標高から候補を出します。座標は保存・送信せず、画面を閉じると測位を止めます。</p>${btn('sense','現在地から候補を探す','world-btn alt')} <span id="sense-status" role="status"></span><div>${btn('motion','動きセンサーを試す','world-text')} <small id="motion-status" role="status"></small></div></div>
-      <form id="activity-form" class="world-form"><label>体験<select name="activity" required>${choice('','体験を選ぶ',true)}${Object.entries(activities).map(([id,[label]])=>choice(id,label,false)).join('')}</select></label>
-      <div class="activity-preview">${person('look')}<p id="activity-label">体験を選ぶと、旅人も動きます。</p></div>
-      <div class="wardrobe"><label>都道府県（任意）<select name="pref">${selectPref('',true)}</select></label><label>訪ねた場所（任意）<input name="place" maxlength="80" placeholder="例：海辺のカフェ"></label></div>
-      <label>絵日記に載せる写真（任意）<input name="photo" type="file" accept="image/jpeg,image/png,image/webp,image/avif"><small>1枚・20MBまで。絵日記全体の写真は圧縮後24MBまで。位置情報は除去します。</small></label>
-      <p class="muted">自分で体験した内容を確認して保存してください。</p><button class="world-btn">自分の体験として記録</button></form>`);
+    const artId={walk:6,hike:4,tour:5,photo:7,cafe:7,meal:0,spa:6,beach:6};
+    const primary=['walk','hike','meal','tour','photo','cafe'];
+    const tile=id=>`<button type="button" data-world="pick-activity" data-kind="${id}" aria-pressed="false"><span aria-hidden="true" class="relic-tile relic-${artId[id]??(Object.keys(activities).indexOf(id)%8)}"></span><span>${activities[id][0]}</span></button>`;
+    return `<section class="page page-narrow activity-page"><header class="page-title"><h1>旅を記録</h1><p>この端末だけの絵日記</p></header>
+      <form id="activity-form" class="flow">
+        <label class="activity-photo"><img id="activity-photo-preview" alt="選択した旅の写真" hidden><span id="activity-file-label">${icon('edit')} 写真を添える <small>任意</small></span><input name="photo" type="file" accept="image/jpeg,image/png,image/webp,image/avif" aria-labelledby="activity-file-label"></label>
+        <fieldset class="activity-experiences"><legend>どんな体験でしたか？</legend><input type="hidden" name="activity" value="">
+          <div class="experience-picks">${primary.map(tile).join('')}</div>
+          <details class="travel-secondary"><summary>ほかの体験</summary><div class="experience-picks">${Object.keys(activities).filter(id=>!primary.includes(id)).map(tile).join('')}</div></details>
+          <div class="activity-preview" hidden>${person('look')}<p id="activity-label"></p></div>
+        </fieldset>
+        <fieldset class="activity-location"><legend>訪ねた場所 <small>任意</small></legend>
+          <label class="visually-hidden" for="activity-place">訪ねた場所</label><input id="activity-place" name="place" maxlength="80" placeholder="場所の名前">
+          <label class="activity-pref">都道府県<select name="pref">${selectPref('',true)}</select></label>
+        </fieldset>
+        <div class="activity-suggestions">${btn('sense','現在地から候補を探す','world-text')} <span id="sense-status" role="status"></span>
+          <details class="travel-secondary"><summary>位置情報とセンサーについて</summary><p>候補を出す間だけ測位します。座標は保存・送信せず、画面を離れると測位を止めます。</p>${btn('motion','動きセンサーを試す','world-text')} <small id="motion-status" role="status"></small></details></div>
+        <button type="button" class="button" data-world="review-activity">記録を確認</button>
+        <dialog class="activity-review"><h2>この体験を残しますか？</h2><p data-review-name></p><p data-review-place></p><p data-review-photo></p>
+          <p class="muted">本人が確認した体験として、この端末に保存します。</p>
+          <div class="actions"><button type="button" class="button button-outline" data-world="edit-activity">戻る</button><button class="button">自分の体験として記録</button></div>
+        </dialog>
+      </form></section>`;
+  }
+  function chooseActivity(id){
+    if(!Object.hasOwn(activities,id))return;
+    root.querySelector('#activity-form [name=activity]').value=id;
+    for(const button of root.querySelectorAll('[data-kind]'))button.setAttribute('aria-pressed',String(button.dataset.kind===id));
+    renderActivity(id);
   }
   function memories(params){
+    const records=entries().filter(entry=>!byId(params.get('pref'))||entry.pref===params.get('pref'));
     return frame('自分だけの冒険記録','旅の絵日記',episode(params.get('event'))+`<div class="world-actions">${a('#activity','体験を記録　＋','world-btn')}${a('#journal/new','自由に日記を書く')}</div>
-      <h2>現実の旅 <small>${entries().length}件</small></h2>${entries().length?entries().map(entry=>`<article class="memory-card">${entry.photo?`<img data-memory-photo="${e(entry.id)}" alt="自分で選んだ旅の写真">`:''}<div class="memory-body">${person(activities[entry.activity][1],`data-entry="${e(entry.id)}" data-activity="${entry.activity}"`)}<div><small>${dateLabel(entry.date)} · 本人が記録</small><h3>${e(where(entry))}</h3><p>${e(entryText(entry))}</p></div></div><div class="world-actions">${btn('export','絵はがきを画像にする','world-text').replace('data-world','data-id="'+e(entry.id)+'" data-world')}${btn('booklet','絵入りの栞にする','world-text').replace('data-world','data-id="'+e(entry.id)+'" data-world')}${btn('remove','この記録を削除','world-text').replace('data-world','data-id="'+e(entry.id)+'" data-world')}</div></article>`).join(''):'<p class="letter">旅先で見たもの、食べたもの。最初の体験を記録すると、ここに絵日記が届きます。</p>'}
+      <h2>現実の旅 <small>${records.length}件</small></h2>${records.length?records.map(entry=>`<article class="memory-card">${entry.photo?`<img data-memory-photo="${e(entry.id)}" alt="自分で選んだ旅の写真">`:''}<div class="memory-body">${person(activities[entry.activity][1],`data-entry="${e(entry.id)}" data-activity="${entry.activity}"`)}<div><small>${dateLabel(entry.date)} · 本人が記録</small><h3>${e(where(entry))}</h3><p>${e(entryText(entry))}</p></div></div><div class="world-actions">${btn('export','絵はがきを画像にする','world-text').replace('data-world','data-id="'+e(entry.id)+'" data-world')}${btn('booklet','絵入りの栞にする','world-text').replace('data-world','data-id="'+e(entry.id)+'" data-world')}${btn('remove','この記録を削除','world-text').replace('data-world','data-id="'+e(entry.id)+'" data-world')}</div></article>`).join(''):'<p class="letter">旅先で見たもの、食べたもの。最初の体験を記録すると、ここに絵日記が届きます。</p>'}
       <h2>仮想の旅 <small>${(game.explored??[]).length} / 47</small></h2><div class="world-actions">${(game.explored??[]).map(id=>a('#trail/'+id,stamp(byId(id)?.name??''),'stamp-link')).join('')||a('#atlas','絵地図をひらく')}</div>`);
-  }
-  function menu(){
-    return frame('風待ちの街','旅のメニュー',`<div class="door-grid">${[['#village','街へ','広場と駅','home'],['#cottage','自分の家','着替え・模様替え','home'],['#atlas','日本の旅地図','47都道府県を散策','compass'],['#activity','体験を記録','現実の旅を持ち帰る','pin'],...destinations,['#route','行き方','富山とその他の地域','route'],['#nearby','寄り道','掲載スポットを探す','pin'],['#medals','メダル','旅の記念','stamp'],['#type','占いの館','旅人タイプを見つける','compass'],['#room-settings','音と動き','演出の設定','edit'],['#welcome','チュートリアル','最初の案内を再確認','book']].map(d=>stepLink(...d)).join('')}</div>`);
   }
   function screen(name,id,params){
     if(name==='village'&&!game.started)return intro();
@@ -106,11 +151,12 @@ export function createWorld(root,{go,notify,profile,onRecords}){
       case 'village':return village();case 'welcome':return intro();case 'avatar':return editor(params.get('guide')==='1');case 'cottage':return cottage(id,params.get('guide')==='1');
       case 'decorate':return homesteadScreen(game,avatar(),id,true);case 'cabinet':return cabinetScreen(game,params);case 'atlas':return mapPage(params);case 'trail':return (game.explored??[]).includes(id)?trail(id):mapPage(params);
       case 'shop':return shopScreen(game);case 'companions':return companionScreen(game);
-      case 'activity':return activity();case 'memories':return memories(params);case 'menu':return menu();
+      case 'activity':return activity();case 'memories':return memories(params);
     }
   }
   function renderActivity(id,tentative=false){
     const c=root.querySelector('.activity-preview canvas');if(!c)return;
+    c.parentElement.hidden=!id;
     c.dataset.pose=activities[id]?.[1]??'look';c.dataset.activity=id;
     character(c,avatar(),c.dataset.pose,0,id);
     root.querySelector('#activity-label').textContent=activities[id]?(tentative?`旅人の動きの候補「${activities[id][0]}」。`:`旅人も「${activities[id][0]}」を体験します。`):'体験を選ぶと、旅人も動きます。';
@@ -162,8 +208,13 @@ export function createWorld(root,{go,notify,profile,onRecords}){
       }
       detected=next.kind;
       if(!root.querySelector('#activity-form [name=activity]').value&&detected)renderActivity(detected,true);
-      status.replaceChildren(document.createTextNode(`確信度：${next.confidence}。 ${next.reason}${motionHint?' '+motionHint+'。':''}${near?' 掲載地点「'+near.name+'」の近辺です。':''}`));
+      status.replaceChildren(document.createTextNode(detected?`候補 · ${activities[detected][0]}${near?'（'+near.name+'の近く）':''}`:'候補を絞り込めません。体験を選べます。'));
+      const more=document.createElement('details');more.className='travel-secondary';
+      const summary=document.createElement('summary');summary.textContent='判定の内訳';
+      const explanation=document.createElement('p');explanation.textContent=`確信度：${next.confidence}。 ${next.reason}${motionHint?' '+motionHint+'。':''}`;
+      more.append(summary,explanation);
       if(detected){const use=document.createElement('button');use.type='button';use.className='world-text';use.dataset.world='use-detection';use.textContent=activities[detected][0]+'を選ぶ';status.append(use);}
+      status.append(more);
     },()=>{if(active){stopLocation();status.textContent='位置情報を取得できません。手入力で記録できます。';}},{enableHighAccuracy:true,maximumAge:0,timeout:15000});
     timeout=setTimeout(()=>{if(active)stopLocation();},60000);
   }
@@ -190,15 +241,28 @@ export function createWorld(root,{go,notify,profile,onRecords}){
     mountLife(root,avatar());
     for(const img of root.querySelectorAll('[data-memory-photo]')){const blob=entries().find(x=>x.id===img.dataset.memoryPhoto)?.photo;if(blob){img.src=URL.createObjectURL(blob);revokes.push(img.src);}}
     const selector=root.querySelector('#pref-choice');
-    if(selector){const p=byId(selector.value),canvas=root.querySelector('#japan-map');if(canvas)atlas(canvas,p.id,id=>changePref(id,params));else closeMap=practicalMap(root.querySelector('.tile-widget'),[p.lat,p.lon]);}
-    clean=()=>{stopArt();closeDressing();closeHome();closeStage();stopLocation();stopMotion();closeMap();revokes.forEach(url=>URL.revokeObjectURL(url));};
+    if(selector){
+      const p=byId(selector.value),canvas=root.querySelector('#japan-map'),filter=Object.hasOwn(mapFilters,params.get('show'))?params.get('show'):'visited';
+      const markers=pins(filter);
+      if(canvas)atlas(canvas,p.id,id=>changePref(id,params),markers);
+      else closeMap=practicalMap(root.querySelector('.tile-widget'),[p.lat,p.lon],{markers:markers.map(point=>({coords:[point.lat,point.lon],label:point.label,kind:'saved'}))});
+    }
+    clean=()=>{const photo=root.querySelector('#activity-photo-preview');if(photo?.src)URL.revokeObjectURL(photo.src);stopArt();closeDressing();closeHome();closeStage();stopLocation();stopMotion();closeMap();revokes.forEach(url=>URL.revokeObjectURL(url));};
   }
   function changePref(id,params=new URLSearchParams(location.hash.split('?')[1])){params.set('pref',id);go('#atlas?'+params);}
   root.addEventListener('change',event=>{
     const el=event.target;
     if(el.dataset.world==='companion-consent')save(g=>({...g,companions:{...lifeTrips(g),automatic:el.checked}}));
     if(el.id==='pref-choice')changePref(el.value);
-    if(el.matches('#activity-form [name=activity]'))renderActivity(el.value);
+    if(el.matches('#activity-form [name=photo]')){
+      const preview=root.querySelector('#activity-photo-preview');
+      if(preview.src)URL.revokeObjectURL(preview.src);
+      const file=el.files?.[0];
+      const oversize=(file?.size??0)>20*1024*1024;
+      el.setCustomValidity(oversize?'20MB以内の写真を選んでください。':'');
+      preview.hidden=!file||oversize;
+      if(file&&!oversize)preview.src=URL.createObjectURL(file);else preview.removeAttribute('src');
+    }
   });
   root.addEventListener('submit',async event=>{
     const form=event.target, fields=new FormData(form),sourceHash=location.hash;
@@ -239,7 +303,7 @@ export function createWorld(root,{go,notify,profile,onRecords}){
       return;
     }
     if(form.id==='avatar-form'){const draft=form.readAppearance();const who=avatarFrom(draft);const pin=draft.pin;await save(g=>({...g,avatar:who,pin:inventory(g).includes(pin)?pin:null}),()=>afterSave(form.dataset.guide==='true'?'#cottage?guide=1':'#cottage'));return;}
-    if(form.dataset.saving)return;
+    if(form.dataset.saving || !form.querySelector('dialog')?.open)return;
     const subject=fields.get('activity'),file=fields.get('photo'),button=event.submitter;form.dataset.saving='1';if(button)button.disabled=true;
     try{
       const photo=file?.size?await importPhoto(file):null;
@@ -252,8 +316,12 @@ export function createWorld(root,{go,notify,profile,onRecords}){
       await save(g=>{
         const prior=g.entries??[];
         if(photo && prior.reduce((n,x)=>n+(x.photo?.size??0),photo.size)>24*1024*1024)throw new Error('絵日記の写真は合計24MBまでです。写真を外すか、不要な記録を整理してください。');
-        return {...g,entries:[entry,...prior],localFinds:[...new Set([...(g.localFinds??[]),...finds])],economy:reward(economy(g),'trip:'+dateInJapan(new Date(entry.date))+':'+entry.activity,12,'現実の旅の記録')};
-      },()=>{if(form.isConnected)go('#memories'+(activityEvents[subject]?'?event='+entry.id:''));notify(items[activities[subject][2]]+'を持ち帰りました。');});
+        const owned=g.localFinds??[],oldCoins=economy(g);
+        const newCoins=reward(oldCoins,'trip:'+dateInJapan(new Date(entry.date))+':'+entry.activity,12,'現実の旅の記録');
+        const item=activities[entry.activity][2];
+        const receipt={item:inventory(g).includes(item)?null:item,coins:oldCoins===newCoins?0:12,finds:finds.filter(id=>!owned.includes(id))};
+        return {...g,entries:[{...entry,reward:receipt},...prior],localFinds:[...new Set([...owned,...finds])],economy:newCoins};
+      },()=>{if(form.isConnected)go('#memories?event='+entry.id);notify('絵日記に保存しました。');});
     }catch(err){notify(err.message);}finally{delete form.dataset.saving;if(button)button.disabled=false;}
   });
   root.addEventListener('click',async event=>{
@@ -269,11 +337,22 @@ export function createWorld(root,{go,notify,profile,onRecords}){
       case 'thank-companions':await save(g=>{const trips=lifeTrips(g);return {...g,companions:{...trips,thanks:[...new Set([...trips.thanks,b.dataset.id])]}};},()=>go('#companions'));break;
       case 'demo-postcard':try{await downloadCompanionPostcard(b.closest('.companion-postcard'));}catch(error){notify(error.message);}break;
       case 'field-action':{const c=root.querySelector('.scene-person canvas');const pose=b.dataset.pose;c.dataset.pose=pose;character(c,avatar(),pose);root.querySelector('#field-voice').textContent={walk:'小道に足を進めました。',photo:'旅人は風景にカメラを向けました。',sit:'腰を下ろして、景色を眺めています。'}[pose];break;}
-      case 'skip':await save(g=>({...g,started:true}),()=>go('#village'));break;
+      case 'skip':await save(g=>({...g,started:true}),()=>go('#cottage'));break;
       case 'explore':{playRoomSound(profile(),'stamp');const id=root.querySelector('#pref-choice').value;await save(g=>({...g,started:true,lastPref:id,explored:[...new Set([...(g.explored??[]),id])]}),()=>go('#trail/'+id));break;}
       case 'motion':await motion(b);break;
       case 'sense':sense(b);break;
-      case 'use-detection':if(detected){root.querySelector('#activity-form [name=activity]').value=detected;renderActivity(detected);}break;
+      case 'use-detection':chooseActivity(detected);break;
+      case 'pick-activity':chooseActivity(b.dataset.kind);break;
+      case 'review-activity':{
+        const form=b.form, d=form.querySelector('dialog'), data=new FormData(form), kind=data.get('activity');
+        if(!form.reportValidity())break;
+        if(!Object.hasOwn(activities,kind)){notify('体験をひとつ選んでください。');form.querySelector('[data-kind]').focus();break;}
+        d.querySelector('[data-review-name]').textContent=activities[kind][0];
+        d.querySelector('[data-review-place]').textContent=[byId(data.get('pref'))?.name,data.get('place')?.trim()].filter(Boolean).join(' · ')||'場所の記録なし';
+        d.querySelector('[data-review-photo]').textContent=data.get('photo')?.size?'写真あり':'写真なし';
+        d.showModal();break;
+      }
+      case 'edit-activity':b.closest('dialog').close();break;
       case 'export':{const entry=entries().find(x=>x.id===b.dataset.id);if(entry)try{await exportCard(entry);}catch{notify('画像を書き出せませんでした。');}break;}
       case 'booklet':{
         if(b.disabled)return;
