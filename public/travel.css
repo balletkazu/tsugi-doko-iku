@@ -141,3 +141,11 @@ body .nav-link[aria-current=page]::after{display:none}
 .medal-card[data-theme="移動"] .medal-icon{background:#e1e9ed;color:#345875}
 .medal-card[data-theme="文化"] .medal-icon{background:#efe2c2;color:#856039}
 .house-title{display:block;text-align:center;font-weight:700}
+.collection-tile{display:block;width:clamp(44px,17vw,72px);aspect-ratio:1;background-repeat:no-repeat}
+.collection-tile.local-crafts{background-image:url('./assets/catalog/local-crafts.webp');background-size:400% 300%}
+.collection-tile.home-crafts{background-image:url('./assets/catalog/home-crafts.webp');background-size:400% 100%}
+.collection-cell-1,.collection-cell-5{background-position-x:33.3333%}
+.collection-cell-2,.collection-cell-6{background-position-x:66.6667%}
+.collection-cell-3,.collection-cell-7{background-position-x:100%}
+.collection-cell-4,.collection-cell-5,.collection-cell-6,.collection-cell-7{background-position-y:50%}
+.collection-cell-8{background-position-y:100%}

@@ -24,6 +24,11 @@ SPRITES = {
     "wardrobe": (4, 4, 103, 109, 117),
     "footwear": (4, 3, 110, 95, 117),
     "regional-objects": (2, 2, 111, 107, 122),
+    "heads-cuts-a": (4, 4, 110, 96, 111),
+    "heads-cuts-b": (4, 4, 110, 96, 111),
+    "atelier-towns": (4, 4, 103, 109, 117),
+    "local-crafts": (3, 3, 111, 107, 122),
+    "home-crafts": (2, 2, 112, 114, 122),
 }
 
 
@@ -38,18 +43,21 @@ def chroma_key(image):
     return Image.fromarray(np.stack([red, green, blue, alpha], axis=2).clip(0, 255).astype("uint8"))
 
 
-def pack(input_file, target, kind):
+def pack(input_file, target, kind, overrides=None):
     columns, rows, max_width, max_height, baseline = SPRITES[kind]
     image = Image.open(input_file).convert("RGB")
     atlas = Image.new("RGBA", (512, ((columns * rows + 3) // 4) * 128))
     for index in range(columns * rows):
         x, y = index % columns, index // columns
-        sprite = chroma_key(image.crop((
+        crop = image.crop((
             round(x * image.width / columns) + 3,
             round(y * image.height / rows) + 3,
             round((x + 1) * image.width / columns) - 3,
             round((y + 1) * image.height / rows) - 3,
-        )))
+        ))
+        if overrides and index in overrides:
+            crop = Image.open(overrides[index]).convert("RGB")
+        sprite = chroma_key(crop)
         # The directional cap art is supplied facing left in columns 1 and 2.
         if kind == "headwear" and index in (9, 10):
             sprite = sprite.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
@@ -76,5 +84,7 @@ if __name__ == "__main__":
     parser.add_argument("kind", choices=SPRITES)
     parser.add_argument("source", type=Path)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--cell-source",nargs=2,action="append",metavar=("INDEX","IMAGE"),default=[])
     args = parser.parse_args()
-    pack(args.source, args.output, args.kind)
+    overrides = {int(index): Path(image) for index,image in args.cell_source}
+    pack(args.source, args.output, args.kind, overrides)

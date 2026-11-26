@@ -278,7 +278,7 @@ export function createWorld(root,{go,notify,profile,records,onRecords}){
       },()=>afterSave('#companions'));
       return;
     }
-    if(form.id==='cabinet-search'){event.preventDefault();go('#cabinet?'+new URLSearchParams({q:fields.get('q'),kind:fields.get('kind')}));return;}
+    if(form.id==='cabinet-search'){event.preventDefault();go('#cabinet?'+new URLSearchParams({q:fields.get('q'),kind:fields.get('kind'),topic:fields.get('topic')??''}));return;}
     if(form.id==='proposal-form'){
       try{
         const draft=proposal(fields);
@@ -369,7 +369,7 @@ export function createWorld(root,{go,notify,profile,records,onRecords}){
           const date=new Date(entry.date);
           const formatted=new Intl.DateTimeFormat('sv-SE',{year:'numeric',month:'2-digit',day:'2-digit'}).format(date);
           const records=await update('records',(current={trips:[],journals:[]})=>current.trips.some(x=>x.id===id)?current:
-            {...current,trips:[{id,title:where(entry)+'の旅の栞',date:formatted,place:where(entry),body:entryText(entry),photos:[photo],updatedAt:Date.now()},...current.trips]});
+            {...current,trips:[{id,title:where(entry)+'の旅の栞',date:formatted,place:where(entry),body:entryText(entry),keepsakeIds:(entry.finds??[]).filter(id=>collectionItem(id)?.booklet),photos:[photo],updatedAt:Date.now()},...current.trips]});
           onRecords(records);if(b.isConnected)go('#trip/'+id);
         }catch{notify('栞を保存できませんでした。端末の空き容量をご確認ください。');}finally{b.disabled=false;}
         break;}
@@ -378,17 +378,27 @@ export function createWorld(root,{go,notify,profile,records,onRecords}){
   });
   document.addEventListener('visibilitychange',()=>{if(document.hidden){stopLocation();stopMotion();}});
   window.addEventListener('pagehide',()=>{stopLocation();stopMotion();});
-  return {snapshot:()=>game,visited:()=>new Set(entries().map(x=>x.pref).filter(Boolean)),themes:()=>entries().map(x=>({hike:'山',peak:'山',beach:'海・島',boat:'海・島',spa:'温泉',walk:'自然',photo:'文化・アート'})[x.activity]).filter(Boolean),load:data=>{game=data??{};},screen,hydrate,release:()=>{clean();clean=()=>{};}};
+  return {snapshot:()=>game,visited:()=>new Set(entries().map(x=>x.pref).filter(Boolean)),themes:()=>entries().map(x=>({hike:'山',peak:'山',beach:'海・島',boat:'海・島',spa:'温泉',walk:'自然',photo:'文化・アート',nature:'自然'})[x.activity]).filter(Boolean),load:data=>{game=data??{};},screen,hydrate,release:()=>{clean();clean=()=>{};}};
 }
 async function postcard(entry,mime='image/png'){
   const canvas=document.createElement('canvas');canvas.width=840;canvas.height=780;
   const ctx=canvas.getContext('2d');ctx.fillStyle='#f5ecd6';ctx.fillRect(0,0,840,780);
   const img=new Image();const url=entry.photo?URL.createObjectURL(entry.photo):'./assets/world/trail.webp';
   try{img.src=url;await img.decode();const scale=Math.min(792/img.width,470/img.height);ctx.drawImage(img,(840-img.width*scale)/2,26+(470-img.height*scale)/2,img.width*scale,img.height*scale);}finally{if(entry.photo)URL.revokeObjectURL(url);}
-  await travelerAssets();
+  await travelerAssets(entry.avatar);
   const sprite=document.createElement('canvas');sprite.width=sprite.height=128;character(sprite,entry.avatar,activities[entry.activity][1],0,entry.activity);ctx.imageSmoothingEnabled=false;ctx.drawImage(sprite,39,511,130,130);
   ctx.fillStyle='#344b43';ctx.font='24px sans-serif';ctx.fillText(dateLabel(entry.date),185,556);ctx.font='bold 38px serif';ctx.fillText(where(entry),185,618,604);
   ctx.font='25px serif';ctx.fillText(activities[entry.activity][0]+'を体験した。',54,688,732);ctx.font='21px sans-serif';ctx.fillText('旅の絵日記　・　'+entry.avatar.name,54,743,732);
+  const keepsake=(entry.finds??[]).map(collectionItem).find(item=>item?.booklet);
+  if(keepsake){
+    const marker=new Image();marker.src='./assets/catalog/'+keepsake.sheet+'.webp';
+    try{
+      await marker.decode();
+      const i=keepsake.art;
+      ctx.imageSmoothingEnabled=true;
+      ctx.drawImage(marker,i%4*128,Math.floor(i/4)*128,128,128,706,651,85,85);
+    }catch{}
+  }
   const blob=await new Promise(resolve=>canvas.toBlob(resolve,mime,.85));if(!blob)throw new Error('画像を作成できませんでした。');
   return blob;
 }

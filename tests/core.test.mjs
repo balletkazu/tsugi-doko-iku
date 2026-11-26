@@ -332,8 +332,8 @@ test('avatar palettes and customization keep truthful stable counts',async()=>{
   const {avatarFrom,parts}=await import('../public/world-data.js');
   const {hairPalette,skinPalette}=await import('../public/avatar-palette.js');
   const {facings}=await import('../public/traveler-art.js');
-  assert.equal(parts.hair.length-1,16);assert.equal(parts.outfit.length-1,12);
-  assert.equal(new Set(hairPalette.map(([,color])=>color)).size,49);
+  assert.equal(parts.hair.length-1,24);assert.equal(parts.outfit.length-1,16);
+  assert.equal(new Set(hairPalette.map(([,color])=>color)).size,50);
   assert.equal(skinPalette.length,20);assert.equal(facings.length,8);
   const a=avatarFrom({design:2,hairTint:'#63848e',tune:{eyes:{size:99,gap:-77},mouth:{x:5}}});
   assert.deepEqual([a.hairTint,a.tune.eyes.size,a.tune.eyes.gap,a.tune.mouth.x],['#63848e',10,-10,5]);
@@ -341,7 +341,7 @@ test('avatar palettes and customization keep truthful stable counts',async()=>{
 });
 test('regional keepsakes match precise user-entered activities rather than an adjacent prefecture',async()=>{
   const {activityEvents,regionalItems,keepsakesFor}=await import('../public/regional-data.js');
-  assert.equal(Object.keys(regionalItems).length,12);
+  assert.equal(Object.keys(regionalItems).length,21);
   assert.ok(Object.values(regionalItems).every(item=>item.source.startsWith('https://')));
   assert.equal(Object.keys(activityEvents).length,10);
   assert.deepEqual(keepsakesFor({pref:'JP-16',place:'氷見 市',activity:'meal'}),['himi-buri']);
@@ -426,4 +426,50 @@ test('the collection and permanent medals share stable, eligible item records',a
   assert.equal(medalEarned(medal,{},{},{entries:[{...entry,source:'virtual'}]}),false);
   assert.equal(medalEarned(medalById('local-storyteller'),{},{},{localProposals:[{place:'伊豆大島'}]}),false);
   assert.equal(selectedTitle({title:'island-breeze',medals:['island-breeze']}),'島風の旅人');
+});
+
+test('editable pigment maps remove the underlying hue at full coverage and preserve value steps',async()=>{
+  const {toneValue,pigmentWeights}=await import('../public/material-color.js');
+  assert.ok(toneValue(70,247,'skin')<128,'bright highlights on dark skin retain the selected complexion');
+  assert.deepEqual(pigmentWeights(255,0,0),[1,0,0]);
+  assert.deepEqual(pigmentWeights(0,255,0),[0,1,0]);
+  assert.ok(pigmentWeights(130,125,0).reduce((a,b)=>a+b,0)<=1);
+  for(const mode of ['hair','skin','fabric'])for(const channel of [25,133,222]){
+    const dark=toneValue(channel,45,mode),mid=toneValue(channel,150,mode),light=toneValue(channel,240,mode);
+    assert.ok(dark>=0&&dark<mid&&mid<light&&light<=255);
+  }
+});
+
+test('larger content catalogs keep old numbers and distinguish actual records from sample travel',async()=>{
+  const {collectionItem,searchCollection}=await import('../public/item-catalog.js');
+  const {keepsakesFor}=await import('../public/regional-data.js');
+  const {avatarFrom,saveAppearance}=await import('../public/world-data.js');
+  const {milestones,medalById,medalEarned}=await import('../public/medals.js');
+  const legacy=saveAppearance({design:2,hair:14,outfit:11});
+  assert.equal(legacy.styleIds.hair,'double-bun');
+  assert.equal(avatarFrom(legacy).hair,14);
+  assert.equal(saveAppearance({design:2,hair:16,outfit:13}).styleIds.outfit,'charcoal-tailoring');
+  assert.equal(collectionItem('koyasan-pine').placement.wall,true);
+  const entry={source:'self-confirmed',place:'富山ガラス工房',pref:'JP-16',activity:'art'};
+  assert.deepEqual(keepsakesFor(entry),['toyama-glass']);
+  assert.deepEqual(keepsakesFor({...entry,source:'virtual'}),[]);
+  assert.equal(searchCollection('regional','越前','craft')[0].id,'echizen-paper');
+  assert.equal(searchCollection('regional','越前','food').length,0);
+  assert.equal(milestones.length,17);
+  assert.ok(medalEarned(medalById('first-material'),{},{},{entries:[{...entry,finds:['toyama-glass']}]}));
+  assert.equal(medalEarned(medalById('first-material'),{},{},{entries:[{...entry,source:'companion',finds:['toyama-glass']}]}),false);
+});
+
+test('the build indexes lazy assets without adding them to the installation download',()=>{
+  const dist = new URL('../dist/',import.meta.url);
+  const worker = readFileSync(new URL('sw.js',dist),'utf8');
+  const entries=JSON.parse(worker.match(/^const assets = (.+);$/m)[1]);
+  const catalog=JSON.parse(worker.match(/^const catalog = (.+);$/m)[1]);
+  for(const [path,hash] of Object.entries(catalog)){
+    assert.ok(!entries.includes(path));
+    assert.match(hash,/^[a-f0-9]{20}$/);
+    accessSync(new URL(path,dist));
+  }
+  assert.ok(catalog['./assets/catalog/head-cuts-a-v1.webp']);
+  assert.ok(entries.includes('./assets/atelier/head-core-map.webp'));
 });

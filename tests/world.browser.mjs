@@ -197,6 +197,53 @@ try {
   });
   if(process.env.ARTIFACT_DIR)await page.locator('#sprite-review').screenshot({path:process.env.ARTIFACT_DIR+'/sprite-combinations.png'});
   await page.locator('#sprite-review').evaluate(e=>e.remove());
+  // Reproduce the teal-fringe and dark-skin reports, then review the
+  // newer short styles and every side of their sourced cutouts.
+  await page.evaluate(async()=>{
+    const {character,travelerAssets}=await import('/traveler-art.js');
+    const table=document.createElement('section');table.id='pigment-review';
+    table.style.display='grid';table.style.gridTemplateColumns='repeat(4,1fr)';table.style.background='#f4e8ce';
+    document.querySelector('.atelier-view').after(table);
+    const android={design:2,hair:0,hairTint:'#547f85',skin:14,outfit:11,clothColor:5,hat:4,accessory:4};
+    const looks=[
+      {...android,hat:0,accessory:0},{...android,skin:19},{...android,skin:6,accessory:2},
+      {...android,hair:16,outfit:12,hat:0,accessory:5},
+      {...android,hair:17,outfit:13,hairTint:'#373733',skin:1,hat:0,beard:5},
+      {...android,hair:18,outfit:14,accessory:1,hat:3}, 
+      {...android,hair:19,outfit:15,skin:3,hairTint:'#514940',hat:0,accessory:4},
+      {...android,hair:21,outfit:13,skin:19,hairTint:'#d6d3ca',hat:0,beard:4},
+      {...android,hair:20,outfit:12,skin:9,hairTint:'#764338',hat:0,accessory:5},
+      {...android,hair:22,outfit:15,skin:16,hairTint:'#39433e',hat:0,accessory:2},
+      {...android,hair:23,outfit:14,skin:4,hairTint:'#735d8d',hat:0,accessory:4}
+    ];
+    await Promise.all(looks.map(look=>travelerAssets(look)));
+    const mask=async name=>{
+      const image=new Image();image.src='/assets/catalog/'+name+'-map.webp';await image.decode();
+      const canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;
+      const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);
+      return (x,y,channel)=>ctx.getImageData(x,y,1,1).data[channel];
+    };
+    const buzz=await mask('head-cuts-a-v1');
+    if(buzz(65,25,0)<248||buzz(65,46,1)<248||buzz(24,88,1)<248||buzz(2*128+21,85,1)<248)
+      throw new Error('Buzz cut must keep the scalp, forehead, and visible front/back ears in their authored materials');
+    const cloth=await mask('atelier-towns');
+    if(cloth(64,32,2)>5||cloth(43,30,2)<248)
+      throw new Error('In the overshirt, the chest lining and outer layer must dye independently');
+    for(const look of looks)for(const direction of ['south','southeast','east','north']){
+      const canvas=document.createElement('canvas');canvas.width=canvas.height=128;canvas.style.width='100%';canvas.dataset.direction=direction;
+      character(canvas,look,'look',0);
+      const alpha=canvas.getContext('2d').getImageData(0,0,128,128).data;
+      if(!alpha.some((v,i)=>i%4===3&&v===255))throw new Error('Missing color composite '+look.hair+' '+direction);
+      table.append(canvas);
+    }
+  });
+  if(process.env.ARTIFACT_DIR){
+    const skip=page.getByRole('link',{name:'本文へ移動',includeHidden:true});
+    await skip.evaluate(link=>{link.hidden=true;});
+    await page.locator('#pigment-review').screenshot({path:process.env.ARTIFACT_DIR+'/pigment-review.png'});
+    await skip.evaluate(link=>{link.hidden=false;});
+  }
+  await page.locator('#pigment-review').evaluate(e=>e.remove());
   await page.getByRole('navigation',{name:'選択肢のページ'}).getByRole('button',{name:'次へ'}).tap();
   await page.getByRole('button',{name:'丸い短いカール',exact:true}).waitFor();
   assert.ok(await page.locator('[data-fitting-value]').count()<=12);
@@ -244,10 +291,19 @@ try {
   await page.getByRole('heading',{name:'旅の計画'}).waitFor();
   await visit('#decorate/garden');
   assert.equal(await page.locator('[data-furnish=pond]').count(),0);
+  await page.getByRole('button',{name:'あじさいの鉢',exact:true}).tap();
+  await stage.focus();await stage.press('ArrowDown');await stage.press('ArrowLeft');await stage.press('Enter');
+  await page.getByText('あじさいの鉢を置きました。').waitFor();
   await page.getByRole('button',{name:'＋ 広げる'}).tap();
   await page.waitForURL('**/#decorate/studio');
   await page.getByRole('link',{name:'小さな離れ',exact:true}).waitFor();
+  await page.getByRole('button',{name:'オークの旅机',exact:true}).tap();
+  await stage.focus();await stage.press('ArrowUp');await stage.press('ArrowUp');await stage.press('Enter');
+  await page.getByText('オークの旅机を置きました。').waitFor();
   await page.getByRole('button',{name:'配置を保存'}).tap();await page.waitForURL('**/#cottage/studio');
+  await page.getByRole('button',{name:'家具を使う'}).tap();
+  await page.getByRole('button',{name:'オークの旅机',exact:true}).tap();
+  await page.getByText('旅先のことを手帖で振り返りました。').waitFor();await shot('materials-house');
   await page.getByRole('link',{name:'庭',exact:true}).tap();await page.getByRole('button',{name:'家具を使う'}).tap();
   await page.getByRole('button',{name:'睡蓮の小池',exact:true}).waitFor();await shot('garden-play');
 
@@ -282,7 +338,7 @@ try {
   await page.getByRole('button',{name:'自分の体験として記録'}).tap();
   await page.getByText('大島椿のピンが図鑑に届きました。').waitFor();
   await page.getByRole('link',{name:'図鑑をひらく'}).tap();
-  await page.getByText('2 / 12 種').waitFor();await shot('cabinet');
+  await page.getByText('2 / 21 種').waitFor();await shot('cabinet');
   await page.getByLabel('図鑑で探す').fill('大島');
   await page.getByRole('button',{name:'探す',exact:true}).tap();
   await page.waitForFunction(()=>document.querySelectorAll('.cabinet-shelves article').length===1);
@@ -300,6 +356,33 @@ try {
   await page.getByRole('button',{name:'記念品',exact:true}).tap();await page.getByRole('button',{name:'大島椿のピン',exact:true}).tap();
   await page.getByRole('button',{name:'できあがり'}).tap();await page.getByRole('heading',{name:'はるの家'}).waitFor();
   await visit('#medals');await page.getByRole('heading',{name:'島風の旅人'}).waitFor();
+  await visit('#activity');await page.getByText('ほかの体験').tap();await page.locator('[data-kind=art]').tap();
+  await page.locator('[name=pref]').selectOption('JP-16');await page.getByLabel('訪ねた場所').fill('富山ガラス工房');
+  await page.getByRole('button',{name:'記録を確認',exact:true}).tap();
+  await page.getByRole('button',{name:'自分の体験として記録'}).tap();
+  await page.getByText('水紋ガラスの飾りが図鑑に届きました。').waitFor();
+  await page.locator('.memory-card').first().getByRole('button',{name:'絵入りの栞にする'}).tap();
+  await page.getByText('添えた記念品　水紋ガラスの飾り').waitFor();
+  await page.getByRole('link',{name:'編集する'}).tap();
+  await page.getByRole('button',{name:'変更を保存する'}).tap();
+  await page.getByText('添えた記念品　水紋ガラスの飾り').waitFor();
+  await visit('#medals');await page.getByRole('heading',{name:'手仕事に出会う旅'}).waitFor();
+  await visit('#cabinet?kind=regional&topic=craft');
+  await page.getByRole('heading',{name:'水紋ガラスの飾り'}).waitFor();
+  assert.equal(await page.locator('.cabinet-shelves article').count(),7);
+  await shot('crafts');
+  await visit('#avatar');await page.getByLabel('髪型を探す').fill('坊主');
+  await page.getByRole('button',{name:'坊主',exact:true}).tap();
+  await page.getByRole('button',{name:'服',exact:true}).tap();await page.getByLabel('衣装の分類').selectOption('formal');
+  await page.getByRole('button',{name:'チャコールのジャケットスーツ'}).tap();await shot('formal');
+  await page.getByRole('button',{name:'できあがり'}).tap();await page.getByRole('heading',{name:'はるの家'}).waitFor();
+  const cached=await page.evaluate(async()=>{const cache=await caches.open('tsugi-materials-v1');return (await cache.keys()).map(r=>r.url);});
+  assert.ok(cached.some(url=>url.includes('head-cuts-a-v1.webp?sha=')));
+  assert.ok(cached.some(url=>url.includes('atelier-towns.webp?sha=')));
+  await ctx.setOffline(true);await page.reload();
+  await page.waitForFunction(()=>Array.from(document.querySelector('[data-home-view]').getContext('2d').getImageData(0,0,4,4).data).some(Boolean));
+  await ctx.setOffline(false);
+
   await visit('#cabinet');
   await page.getByText('地元の話を書き添える').tap();
   await page.locator('#proposal-form [name=place]').fill('海辺の町');await page.getByLabel('品物や伝承の題名').fill('春の木舟');
@@ -337,5 +420,5 @@ try {
   await page.getByRole('heading',{name:'編集中の名前の家'}).waitFor();
   await ctx.setOffline(false);
   console.log('PASS a deployed update offers reload, preserves edits until the user saves, and keeps records on the new offline shell.');
-  assert.deepEqual(errors,[]);console.log('PASS four tabs and direct travel tools, 104 sprite combinations, touch placement and pinch, stamp books, real Toyama schedules and a shared map, private experience confirmation and rewards, companion practice and offline PWA.');
+  assert.deepEqual(errors,[]);console.log('PASS four tabs and direct travel tools, 148 sprite combinations, touch placement and pinch, stamp books, real Toyama schedules and a shared map, private experience confirmation and rewards, companion practice and offline PWA.');
 } finally {await browser.close();server.close();}

@@ -1,5 +1,6 @@
 import { escapeHtml as e, mapsSearch } from './core.js';
 import { importPhoto } from './storage.js';
+import {collectionItem} from './item-catalog.js';
 import { empty, external, icon, link, page } from './ui.js';
 
 export const recordGroup = type => type === 'trip' ? 'trips' : 'journals';
@@ -25,7 +26,9 @@ function formScreen(type, entry) {
 
 function itemScreen(type, entry) {
   const trip = type === 'trip';
-  return page(entry.title,trip ? '旅の栞' : '旅の日記・自分だけ',`${back(type)}<article class="surface flow">${entry.date || entry.place ? `<p>${[entry.date,entry.place].filter(Boolean).map(e).join(' · ')}</p>` : ''}${entry.mood && entry.mood !== '指定なし' ? `<p class="eyebrow">${e(entry.mood)}</p>` : ''}${entry.photos?.length ? `<div class="photo-list" data-photos="${entry.id}"></div>` : ''}${entry.body ? `<section class="flow"><h2>${trip ? '旅程・立ち寄り先' : '日記'}</h2><p class="prewrap">${e(entry.body)}</p></section>` : ''}${entry.transport ? `<section class="flow"><h2>交通・持ち物のメモ</h2><p class="prewrap">${e(entry.transport)}</p></section>` : ''}${entry.place ? `<div class="no-print">${external(mapsSearch(entry.place),'地図で見る')}</div>` : ''}<div class="actions no-print">${link(`#${type}/${entry.id}/edit`,'編集する','edit','button button-outline')}${trip ? '<button class="button button-outline" type="button" data-action="print">印刷・PDFにする</button><button class="button button-outline" type="button" data-action="share">テキストで共有</button>' : ''}<button class="button button-danger" type="button" data-action="delete-record" data-type="${type}" data-id="${entry.id}">削除</button></div>${trip ? '<small class="muted no-print">テキスト共有には写真を含みません。</small>' : ''}</article>`,{narrow:true,eyebrow:trip ? 'Trip booklet' : 'Travel journal'});
+  const keepsakes=(entry.keepsakeIds??[]).map(collectionItem).filter(Boolean);
+  const souvenirs=keepsakes.length?`<p class="muted record-keepsakes">添えた記念品　${keepsakes.map(item=>e(item.name)).join('・')}</p>`:'';
+  return page(entry.title,trip ? '旅の栞' : '旅の日記・自分だけ',`${back(type)}<article class="surface flow">${entry.date || entry.place ? `<p>${[entry.date,entry.place].filter(Boolean).map(e).join(' · ')}</p>` : ''}${entry.mood && entry.mood !== '指定なし' ? `<p class="eyebrow">${e(entry.mood)}</p>` : ''}${entry.photos?.length ? `<div class="photo-list" data-photos="${entry.id}"></div>` : ''}${souvenirs}${entry.body ? `<section class="flow"><h2>${trip ? '旅程・立ち寄り先' : '日記'}</h2><p class="prewrap">${e(entry.body)}</p></section>` : ''}${entry.transport ? `<section class="flow"><h2>交通・持ち物のメモ</h2><p class="prewrap">${e(entry.transport)}</p></section>` : ''}${entry.place ? `<div class="no-print">${external(mapsSearch(entry.place),'地図で見る')}</div>` : ''}<div class="actions no-print">${link(`#${type}/${entry.id}/edit`,'編集する','edit','button button-outline')}${trip ? '<button class="button button-outline" type="button" data-action="print">印刷・PDFにする</button><button class="button button-outline" type="button" data-action="share">テキストで共有</button>' : ''}<button class="button button-danger" type="button" data-action="delete-record" data-type="${type}" data-id="${entry.id}">削除</button></div>${trip ? '<small class="muted no-print">テキスト共有には写真を含みません。</small>' : ''}</article>`,{narrow:true,eyebrow:trip ? 'Trip booklet' : 'Travel journal'});
 }
 
 export function recordScreen(type, id, edit, data) {
@@ -65,6 +68,7 @@ export async function submitRecord(form, current) {
   const photos = [...kept];
   for (const file of fresh) photos.push(await importPhoto(file));
   return {
+    ...(current?.keepsakeIds?{keepsakeIds:current.keepsakeIds}:{}),
     id:current?.id ?? crypto.randomUUID(), title, date:value('date'), place:value('place'), body:value('body'),
     transport:value('transport'), mood:value('mood'), photos, updatedAt:Date.now()
   };

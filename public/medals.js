@@ -1,3 +1,5 @@
+import {regionalTopic} from './regional-data.js';
+
 function realStampCount(profile){
   const keys=new Set(Object.keys(profile.stamps??{}));
   for(const [key,entries] of Object.entries(profile.visits??{})){
@@ -10,6 +12,9 @@ const activity=(...kinds)=>entry=>kinds.includes(entry.activity);
 const recorded=predicate=>(_profile,_records,game)=>realEntries(game).some(predicate);
 const nameMatches=pattern=>entry=>pattern.test(String(entry.place??'').normalize('NFKC').replace(/\s/g,''));
 const island=nameMatches(/伊豆大島|小値賀|犬島|利尻島|礼文島|屋久島|奄美大島|佐渡島|与那国島/u);
+const keepsakes=game=>[...new Set(realEntries(game).flatMap(entry=>entry.finds??[]))];
+const atelierCount=minimum=>(_profile,_records,game)=>keepsakes(game).filter(id=>regionalTopic(id)==='craft').length>=minimum;
+const localFind=(...ids)=>recorded(entry=>(entry.finds??[]).some(id=>ids.includes(id)));
 const ravine=nameMatches(/渓谷|峡谷/u);
 
 export const milestones=[
@@ -24,6 +29,10 @@ export const milestones=[
   {id:'field-observer',name:'小さな自然の観察者',theme:'自然',detail:'自然観察の体験を記録する',qualifies:recorded(activity('nature'))},
   {id:'makers-story',name:'作り手の話を聴く人',theme:'文化',detail:'地域の工芸に触れた記念品を持ち帰る',hidden:true,qualifies:recorded(entry=>(entry.finds??[]).includes('nara-brush'))},
   {id:'light-on-the-page',name:'光の採集家',theme:'文化',detail:'風景を撮影した体験に、写真を添えて保存する',qualifies:recorded(entry=>entry.activity==='photo'&&!!entry.photo)},
+  {id:'first-material','name':'手仕事に出会う旅','theme':'文化','detail':'工芸の記念品をひとつ持ち帰る',qualifies:atelierCount(1)},
+  {id:'three-ateliers',name:'素材の旅をつづる人',theme:'文化',detail:'異なる工芸の記念品を3種持ち帰る',hidden:true,qualifies:atelierCount(3)},
+  {id:'tales-and-beads',name:'土地の昔話を拾う人',theme:'文化',detail:'出雲の玉作や高野山の伝承に触れた旅を記録する',hidden:true,qualifies:localFind('izumo-bead','koyasan-pine')},
+  {id:'geology-trace',name:'地面の記憶を訪ねる人',theme:'自然',detail:'翡翠や湯けむりをきっかけに土地の地質の記録を残す',hidden:true,qualifies:localFind('itoigawa-jade','unzen-steam')},
   {id:'local-storyteller',name:'ふるさとの語り部',theme:'貢献',detail:'編集部が地域の提案を採用した記念',hidden:true,qualifies:()=>false},
   {id:'companion-memory',name:'旅を分かち合う人',theme:'おとも',detail:'旅を終えたおともから届いた記念',hidden:true,qualifies:()=>false}
 ];

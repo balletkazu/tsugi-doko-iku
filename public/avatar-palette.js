@@ -7,7 +7,7 @@ const palettes=[
   ['胡桃',['#685040','#806044','#725746','#776654','#8e7253','#604739','#a08362']],
   ['青緑',['#4d7974','#587979','#48726a','#547f85','#5d7771','#406769','#608d80']]
 ];
-export const hairPalette=[...palettes.map(([name,tones])=>[name,tones[0]]),...palettes.flatMap(([name,tones])=>tones.slice(1).map((c,i)=>[name+' '+(i+2),c]))];
+export const hairPalette=[...palettes.map(([name,tones])=>[name,tones[0]]),...palettes.flatMap(([name,tones])=>tones.slice(1).map((c,i)=>[name+' '+(i+2),c])),['銀白','#d6d3ca']];
 export const skinPalette=[
   ['杏','#f3c88e'],['小麦','#d8a579'],['褐色','#b5805e'],['深い褐色','#8c5945'],['薄桃','#f7ceb0'],['蜂蜜','#dfb481'],
   ['絹','#f6ddc1'],['桜','#efc4a4'],['小桃','#edb88b'],['山吹','#e6ac75'],['麦芽','#dea479'],['浅い琥珀','#d49d71'],

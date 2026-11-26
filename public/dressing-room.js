@@ -2,7 +2,7 @@ import {escapeHtml as e} from './core.js';
 import {parts,items,avatarFrom} from './world-data.js';
 import {facings,character,travelerAssets} from './traveler-art.js';
 import {hairPalette,skinPalette,clothPalette,tuningParts,tuningFields} from './avatar-palette.js';
-import {searchStyles,styleGroups} from './style-catalog.js';
+import {searchStyles,styleGroupNames} from './style-catalog.js';
 
 const groups=[
   ['hair','髪・肌',['hair','hairColor','skin']],
@@ -15,6 +15,7 @@ const labels={pin:'記念品'};
 const directions=['正面','背面','右向き','左向き','右斜め','左斜め','右斜め後ろ','左斜め後ろ'];
 const sequence=['south','southeast','east','northeast','north','northwest','west','southwest'];
 const swatches={hairColor:hairPalette,skin:skinPalette,clothColor:clothPalette};
+const searchable=new Set(['hair','outfit']);
 const faceParts=new Set(['face','eyes','brows','nose','mouth','ears','beard','hair']);
 
 export function dressingRoom(avatar,owned,guided){
@@ -41,7 +42,8 @@ export function mountDressing(root,initial,{looks=[],saveLook}={}){
   const status=form.querySelector('.atelier-note'),setList=form.querySelector('[data-looks]');
   const filter=form.querySelector('.fitting-filter'),more=form.querySelector('.fitting-more');
   const pageSize=12;
-  let groupFilter='',query='',offset=0;
+  const filters={hair:{query:'',group:''},outfit:{query:'',group:''}};
+  let offset=0;
   const owned=[...root.querySelector('[data-fitting-owned]').content.children].map(node=>node.dataset.id);
   let draft={...avatarFrom(initial),pin:initial.pin}, group=groups[0],part=group[2][0],direction=0;
   let past=[],future=[],saved=[...looks],reactTimer=0,released=false,saving=false;
@@ -51,23 +53,29 @@ export function mountDressing(root,initial,{looks=[],saveLook}={}){
       const canvas=button.querySelector('canvas');if(!canvas)continue;
       const value=button.dataset.fittingValue;
       const look={...draft,[part]:part==='pin'?value:Number(value)};
-      if(faceParts.has(part)){
-        look.hat=0;if(part!=='eyes')look.glasses=0;
-        const source=document.createElement('canvas');source.width=source.height=128;source.dataset.doll='1';
-        character(source,look);
-        canvas.getContext('2d').drawImage(source,27,6,74,64,0,0,88,76);
-      }else if(part==='outfit'||part==='layer'||part==='pattern'||part==='material'){
-        const source=document.createElement('canvas');source.width=source.height=128;
-        character(source,{...look,accessory:0,bag:0},'look',0);
-        canvas.getContext('2d').drawImage(source,28,56,72,64,0,3,88,78);
-      }else {
-        canvas.dataset.direction=group[0]==='gear'?sequence[direction]:'south';
-        character(canvas,look,'look',3);
-      }
+      const face=faceParts.has(part), clothes=['outfit','layer','pattern','material'].includes(part);
+      if(face){look.hat=0;if(part!=='eyes')look.glasses=0;}
+      if(clothes){look.accessory=0;look.bag=0;}
+      const facing=group[0]==='gear'?sequence[direction]:'south';
+      const capture=()=>{
+        if(!canvas.isConnected)return;
+        if(face||clothes){
+          const source=document.createElement('canvas');source.width=source.height=128;
+          character(source,look,'look',0);
+          const ctx=canvas.getContext('2d');ctx.clearRect(0,0,88,88);
+          if(face)ctx.drawImage(source,27,3,74,67,0,0,88,79);
+          else ctx.drawImage(source,28,54,72,66,0,3,88,78);
+        }else{
+          canvas.dataset.direction=facing;
+          character(canvas,look,'look',3);
+        }
+      };
+      capture();
+      if(face||clothes)travelerAssets(look).then(capture);
     }
   }
   function renderChoices(){
-    const options=part==='outfit'?searchStyles('outfit',query,groupFilter).map(x=>[x.value,x.name]):
+    const options=searchable.has(part)?searchStyles(part,filters[part].query,filters[part].group).map(x=>[x.value,x.name]):
       part==='pin'?[['','なし'],...owned.map(key=>[key,items[key]])]:parts[part].slice(1).map((label,i)=>[i,label]);
     const selected=draft[part]??'',palette=swatches[part];
     tray.classList.toggle('swatches',!!palette);
@@ -82,10 +90,11 @@ export function mountDressing(root,initial,{looks=[],saveLook}={}){
     else drawOptions();
   }
   function renderOptions(){
-    filter.hidden=part!=='outfit';
-    filter.innerHTML=part==='outfit'?`<div class="wardrobe-filters">
-      <label><span class="visually-hidden">洋服を探す</span><input type="search" data-wardrobe-search placeholder="服の名前を探す" value="${e(query)}" maxlength="40"></label>
-      <label><span class="visually-hidden">衣装の分類</span><select data-wardrobe-group><option value="">すべての服</option>${Object.entries(styleGroups).map(([id,label])=>`<option value="${id}" ${groupFilter===id?'selected':''}>${label}</option>`).join('')}</select></label>
+    filter.hidden=!searchable.has(part);
+    const state=filters[part],label=part==='outfit'?'洋服':'髪型';
+    filter.innerHTML=state?`<div class="wardrobe-filters">
+      <label><span class="visually-hidden">${label}を探す</span><input type="search" data-wardrobe-search placeholder="${label}の名前を探す" value="${e(state.query)}" maxlength="40"></label>
+      <label><span class="visually-hidden">${part==='outfit'?'衣装の分類':'髪型の分類'}</span><select data-wardrobe-group><option value="">すべて</option>${styleGroupNames(part).map(([id,label])=>`<option value="${id}" ${state.group===id?'selected':''}>${label}</option>`).join('')}</select></label>
     </div>`:'';
     renderChoices();
     if(part==='hairColor')tune.innerHTML=`<label class="hair-color-free">自由な髪色<input aria-label="自由な髪色" type="color" value="${draft.hairTint??hairPalette[draft.hairColor][1]}"></label>`;
@@ -121,18 +130,18 @@ export function mountDressing(root,initial,{looks=[],saveLook}={}){
   });
   form.oninput=event=>{
     const field=event.target;
-    if(field.hasAttribute('data-wardrobe-search')){query=field.value;offset=0;renderChoices();return;}
+    if(field.hasAttribute('data-wardrobe-search')){filters[part].query=field.value;offset=0;renderChoices();return;}
     if(field.dataset.tuning)draft={...draft,tune:{...draft.tune,[part]:{...draft.tune?.[part],[field.dataset.tuning]:Number(field.value)}}};
     else if(field.type==='color')draft={...draft,hairTint:field.value};
     else return;
-    direction=0;preview();
+    preview();
   };
   form.onkeydown=event=>{
     if(event.key==='Enter'&&event.target.hasAttribute('data-wardrobe-search'))event.preventDefault();
   };
   form.onchange=event=>{
     if(!event.target.hasAttribute('data-wardrobe-group'))return;
-    groupFilter=event.target.value;offset=0;renderChoices();
+    filters[part].group=event.target.value;offset=0;renderChoices();
   };
   form.onclick=async event=>{
     const button=event.target.closest('button');if(!button)return;

@@ -1,7 +1,7 @@
 import {inventory} from './world-data.js';
 import {collectionItem} from './item-catalog.js';
 
-const starters=['bed','shelf','tea','chair','plant','rug','bench','pond','greenhouse','stream','lamp'];
+const starters=['bed','shelf','tea','chair','plant','rug','bench','pond','greenhouse','stream','lamp','oak-desk','rocking-chair','potted-hydrangea','cedar-birdbath'];
 export const homeAreas={
   room:{name:'居間',width:9,height:7,arrival:[4,6],outside:false},
   garden:{name:'庭',width:12,height:9,arrival:[5,0],outside:true},

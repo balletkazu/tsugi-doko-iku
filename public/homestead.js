@@ -1,9 +1,18 @@
 import {furniture as artBounds,souvenir as relicBounds,regionalObjects} from './sprite-guides.js';
+import {materialGuides} from './material-guides.js';
 import {escapeHtml as e} from './core.js';
 import {travelerAssets} from './traveler-art.js';
 import {relicIcons} from './item-catalog.js';
 import {character,ornament} from './world-art.js';
 import {homeAreas,coverings,coveringsFor,homeProjection,furniture,homeStock,readHome,canPlace,footprint,homePath,around} from './home-layout.js';
+
+// A little warmth on an explicit tap, inspired by the four well-being factors.
+const greetings=[
+  '気が向いたら、知らない小道を一本だけ歩いてみよう。',
+  '一緒に過ごせるのがうれしいな。',
+  'ひと息ついてから、ゆっくり考えよう。',
+  '今日はここで休んでいこう。'
+];
 
 const textures=['./assets/world/empty-room.webp','./assets/world/open-garden.webp'];
 const furnitureSheet='./assets/atelier/furnishings.webp';
@@ -52,7 +61,7 @@ export function mountHomestead(root,{game,avatar,reduced,commit,notify}){
   const initial={x:dims.w/2,y:dims.h*.50,z:1};
   let cam={...initial},view={w:1,h:1,ratio:1},mode='objects',drag=null,selected=null,armed=null,gesture=null;
   let cursor=[...spec.arrival],actor=tileCenter(spec.arrival),cell=[...spec.arrival],pose='look',facing='south',animation=0,queue=[],pending=null,rest=0,raf=0,dirty=false,disposed=false,busy=false;
-  let picture=null,photoUrl=null,frame=0,poseStart=0;
+  let picture=null,photoUrl=null,frame=0,poseStart=0,greetingIndex=0;
   const objects=()=>layout.items[area]??[];
   const zoom=()=>Math.max(view.h/dims.h,view.w/(dims.w*1.2))*cam.z;
   const screen=(x,y)=>[(x-cam.x)*zoom()+view.w/2,(y-cam.y)*zoom()+view.h/2];
@@ -64,7 +73,18 @@ export function mountHomestead(root,{game,avatar,reduced,commit,notify}){
   const sheet=image(furnitureSheet,()=>{if(!disposed){request();refreshTools();}});
   const relics=image('./assets/atelier/relics.webp',()=>{if(!disposed){request();refreshTools();}});
   const regionArt=image('./assets/atelier/regional-objects.webp',()=>{if(!disposed){request();refreshTools();}});
-  travelerAssets().then(request);
+  const collectionArt=new Map();
+  function artFor(model){
+    if(model.sheet==='regional-objects')return {source:regionArt,boxes:regionalObjects};
+    if(model.sheet){
+      if(!collectionArt.has(model.sheet)){
+        collectionArt.set(model.sheet,image('./assets/catalog/'+model.sheet+'.webp',()=>{if(!disposed){request();refreshTools();}}));
+      }
+      return {source:collectionArt.get(model.sheet),boxes:materialGuides[model.sheet]};
+    }
+    return {source:sheet,boxes:artBounds};
+  }
+  travelerAssets(avatar).then(request);
   function refreshPhoto(){
     if(photoUrl)URL.revokeObjectURL(photoUrl);
     const data=(game.entries??[]).find(entry=>entry.id===layout.wallPhoto)?.photo;
@@ -127,13 +147,13 @@ export function mountHomestead(root,{game,avatar,reduced,commit,notify}){
     const f=furniture(item.kind),[w,h]=footprint(item),rel=f.icon&&relicIcons[f.icon];
     const point=f.wall?wallPoint:ground,surface=f.flat||f.groundArt;
     const [x,y]=point([item.x+w/2,item.y+(surface||f.wall?h*.5:h-.12)]);
-    const source=f.sheet==='regional-objects'?regionArt:sheet;
-    const box=Number.isInteger(f.art)?(source===regionArt?regionalObjects:artBounds)[f.art]:f.icon?relicBounds[rel]:[0,0,32,32];
+    const {source,boxes}=artFor(f);
+    const box=Number.isInteger(f.art)?boxes[f.art]:f.icon?relicBounds[rel]:[0,0,32,32];
     const assetRatio=(box[3]-box[1])/(box[2]-box[0]);
     const depth=(item.y+h)/spec.height;
     const cellWidth=projection.visible(depth)/spec.width;
     const intrinsic={bed:1.52,shelf:1.96,tea:1.74,chair:1.03,plant:.78,fern:.74,bench:1.74,pond:1.9,stream:2.26,greenhouse:1.85,rug:1.9,lamp:.63,lantern:.63};
-    const width=cellWidth*(intrinsic[item.kind]??.59)*(f.wall?.58:1);
+    const width=cellWidth*(f.scale??intrinsic[item.kind]??.59)*(f.wall?.58:1);
     const wide=width*(item.r%2&&!f.flat&&!f.wall?.84:1);
     const high=surface?Math.max(cellWidth*.53,ground([0,item.y+h])[1]-ground([0,item.y])[1])*.96:width*assetRatio;
     const top=surface||f.wall?-high/2:-high;
@@ -206,7 +226,7 @@ export function mountHomestead(root,{game,avatar,reduced,commit,notify}){
     tools.innerHTML=`<div class="furniture-strip">${stock.map(kind=>`<button type="button" data-furnish="${kind}" aria-pressed="${armed===kind}"><canvas width="64" height="64" aria-hidden="true"></canvas>${e(furniture(kind).name)}</button>`).join('')}</div>${chosen?`<div class="furniture-actions"><span>${e(furniture(chosen.kind).name)}</span>${option('rotate','↻ 回す')}${option('remove','片づける')}</div>`:''}`;
     for(const button of tools.querySelectorAll('[data-furnish]')){
       const c=button.querySelector('canvas'),dest=c.getContext('2d'),f=furniture(button.dataset.furnish);
-      const source=f.sheet==='regional-objects'?regionArt:sheet;
+      const {source}=artFor(f);
       if(Number.isInteger(f.art)&&loaded(source))paintSheet(dest,f.art,0,0,64,64,source);
       else if(f.icon&&loaded(relics))paintSheet(dest,relicIcons[f.icon],0,0,64,64,relics);
       else{ornament(fallback,button.dataset.furnish);dest.drawImage(fallback,0,0,64,64);}
@@ -299,7 +319,7 @@ export function mountHomestead(root,{game,avatar,reduced,commit,notify}){
     }
     const target=hit(...point);
     if(!editing&&!target&&Math.abs(point[0]-actor[0])<24&&point[1]>=actor[1]-63&&point[1]<=actor[1]+6){
-      clearTimeout(rest);pose='joy';tell(avatar.name+'がにっこりしました。');request();
+      clearTimeout(rest);pose='joy';tell(greetings[greetingIndex++%greetings.length]);request();
       rest=setTimeout(()=>{pose='look';tell('');request();},1800);return;
     }
     if(!editing)walk(point,target);

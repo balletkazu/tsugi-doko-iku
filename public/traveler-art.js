@@ -1,32 +1,51 @@
 import {avatarFrom,avatarDefaults} from './world-data.js';
 import {hairPalette,skinPalette,clothPalette} from './avatar-palette.js';
-import {front,profile,rear,garment,detail,headwear,wardrobe,footwear,regionalObjects} from './sprite-guides.js';
+import {detail,headwear,footwear,regionalObjects} from './sprite-guides.js';
+import {materialGuides} from './material-guides.js';
+import {channelsOf as rgb,lightness,toneValue,skinInk,pigmentWeights} from './material-color.js';
 import {styles} from './style-catalog.js';
 import {collectionItem} from './item-catalog.js';
 import {spriteSize as cell,groundY,eyeLine,facings,rigView,fitHat,stride,visibleMotion} from './avatar-rig.js';
 
 export {facings};
 
-const sheets=['neutral-heads','skin-zones','heads-back','garments','details','headwear','wardrobe','footwear','regional-objects'];
+const core=['head-core','head-core-map','garments','garments-map','wardrobe','wardrobe-map','details','headwear','footwear','regional-objects'];
+const addon=new Set(['head-cuts-a-v1','head-cuts-b-v1','atelier-towns','local-crafts']);
 const images=new Map();
 const painted=new Map();
 const normalized=new WeakMap();
+const maskCells=new Map();
 let assets;
 const last=(a,b,t)=>a+(b-a)*t;
-const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
-const rgb=hex=>hex.slice(1).match(/../g).map(byte=>parseInt(byte,16));
+
 
 function sheet(name){
   if(!images.has(name)){
     const image=new Image();
-    image.src='./assets/atelier/'+name+'.webp';
-    images.set(name,image);
+    image.src='./assets/'+(addon.has(name.replace(/-map$/,''))?'catalog':'atelier')+'/'+name+'.webp';
+    images.set(name,{image,ready:image.decode().catch(()=>{})});
   }
-  return images.get(name);
+  return images.get(name).image;
 }
-export function travelerAssets(){
-  return assets??=Promise.all(sheets.map(name=>sheet(name).decode().catch(()=>{})));
+const available=name=>!!sheet(name).naturalWidth;
+const faces=avatar=>styles.hair[avatar.hair].sheet;
+const materialReady=name=>available(name)&&available(name+'-map');
+function additions(a){
+  const parts=[faces(a),styles.outfit[a.outfit].sheet].filter(name=>addon.has(name));
+  const art=a.pin&&collectionItem(a.pin)?.sheet;
+  return [...new Set([...parts.flatMap(part=>[part,part+'-map']),...(addon.has(art)?[art]:[])])];
 }
+function readAll(names){
+  return Promise.all(names.map(name=>{sheet(name);return images.get(name).ready;}));
+}
+export function travelerAssets(input){
+  assets??=readAll(core);
+  return input?Promise.all([assets,readAll(additions(appearance(input)))]):assets;
+}
+if(typeof window!=='undefined')window.addEventListener('online',()=>{
+  for(const [name,{image}] of images)if(!image.naturalWidth)images.delete(name);
+  assets=null;
+});
 function surface(w=cell,h=cell){
   const target=document.createElement('canvas');
   target.width=w;target.height=h;
@@ -37,46 +56,48 @@ function drawCell(ctx,image,index,x,y,w,h,box=[0,0,cell,cell]){
   const [left,top,right,bottom]=box;
   ctx.drawImage(image,index%4*cell+left,Math.floor(index/4)*cell+top,right-left,bottom-top,x,y,w,h);
 }
+function materialCell(name,index){
+  const key=name+':'+index;
+  if(maskCells.has(key))return maskCells.get(key);
+  const c=surface(), ctx=c.getContext('2d',{willReadFrequently:true});
+  drawCell(ctx,sheet(name+'-map'),index,0,0,cell,cell);
+  const raw=ctx.getImageData(0,0,cell,cell), pixels=raw.data.slice();
+  // Features remain on the face by using the very same skin coverage.
+  for(let i=0;i<raw.data.length;i+=4)raw.data[i+3]=pixels[i+1];
+  ctx.putImageData(raw,0,0);
+  const value={pixels,skin:c};
+  maskCells.set(key,value);
+  if(maskCells.size>64)maskCells.delete(maskCells.keys().next().value);
+  return value;
+}
 function paint(name,index,a){
-  const head=name!=='garments'&&name!=='wardrobe';
-  const hair=head&&(a.hairTint??hairPalette[a.hairColor]?.[1]);
-  const skin=name==='neutral-heads'&&a.skin>0&&skinPalette[a.skin][1];
+  const head=name.startsWith('head');
+  const hair=head&&(a.hairTint??hairPalette[a.hairColor][1]);
+  const skin=skinPalette[a.skin][1];
   const cloth=!head&&clothPalette[a.clothColor]?.[1];
-  if(!(hair||skin||cloth||(!head&&(a.pattern||a.material))))return null;
   const key=[name,index,hair,skin,cloth,head?'':a.pattern,head?'':a.material].join('|');
   if(painted.has(key))return painted.get(key);
   const image=surface(),ctx=image.getContext('2d',{willReadFrequently:true});
   drawCell(ctx,sheet(name),index,0,0,cell,cell);
-  const data=ctx.getImageData(0,0,cell,cell);
-  let masks;
-  if(name==='neutral-heads'){
-    ctx.clearRect(0,0,cell,cell);
-    drawCell(ctx,sheet('skin-zones'),index,0,0,cell,cell);
-    masks=ctx.getImageData(0,0,cell,cell).data;
-  }
-  const inkHair=hair?rgb(hair):null,inkSkin=skin?rgb(skin):null,inkCloth=cloth?rgb(cloth):null;
-  const clothingBox=(name==='wardrobe'?wardrobe:garment)[index];
-  const p=data.data;
-  for(let i=0;i<p.length;i+=4){
-    if(p[i+3]<20)continue;
-    const [r,g,b]=[p[i],p[i+1],p[i+2]];
-    const x=i/4%cell,y=Math.floor(i/4/cell),luma=.26*r+.58*g+.16*b;
-    const skinWeight=(masks?.[i+3]??0)/255;
-    const onCoat=!head&&y<last(clothingBox[1],clothingBox[3],.69);
-    const hairWeight=head&&r>g+6&&g>b+4&&r>59?(1-skinWeight)*.87:0;
-    const motif=a.pattern===1&&y%9<2||a.pattern===2&&x%9===3&&y%8===4||a.pattern===3&&(x%12===4||y%11===4);
-    const fabric=onCoat?((a.material?(x*13+y*29)%(a.material+4)-2:0)+(motif?22:0)):0;
-    for(let c=0;c<3;c++){
-      let value=p[i+c];
-      if(inkHair&&hairWeight)value=last(value,inkHair[c]*clamp(luma/123,.46,1.53),hairWeight);
-      if(inkSkin&&skinWeight)value=last(value,inkSkin[c]*clamp(luma/207,.47,1.22)+(c===0?(r-b-48)*.17:0),skinWeight*.94);
-      if(inkCloth&&onCoat)value=last(value,inkCloth[c]*clamp(luma/127,.43,1.45),.83);
-      p[i+c]=value+fabric;
-    }
+  const pixels=materialCell(name,index).pixels;
+  const data=ctx.getImageData(0,0,cell,cell), dst=data.data;
+  const rgbHair=hair?rgb(hair):null,rgbSkin=rgb(skin),rgbCloth=cloth?rgb(cloth):null;
+  for(let i=0;i<dst.length;i+=4){
+    if(!dst[i+3])continue;
+    const [hairArea,skinArea,fabric]=pigmentWeights(pixels[i],pixels[i+1],pixels[i+2]);
+    if(!hairArea&&!skinArea&&!fabric)continue;
+    const x=i/4%cell,y=Math.floor(i/4/cell),light=lightness(dst[i],dst[i+1],dst[i+2]);
+    const pattern=a.pattern===1&&y%9<2||a.pattern===2&&x%9===3&&y%8===4||a.pattern===3&&(x%12===4||y%11===4);
+    const texture=fabric*((a.material?(x*13+y*29)%(a.material+4)-2:0)+(pattern?18:0));
+    const h=rgbHair?hairArea:0, s=skinArea, f=rgbCloth?fabric:0;
+    for(let c=0;c<3;c++)dst[i+c]=dst[i+c]*(1-h-s-f)+
+      (h?toneValue(rgbHair[c],light,'hair')*h:0)+
+      (s?toneValue(rgbSkin[c],light,'skin')*s:0)+
+      (f?toneValue(rgbCloth[c],light,'fabric')*f:0)+texture;
   }
   ctx.putImageData(data,0,0);
   painted.set(key,image);
-  if(painted.size>128)painted.delete(painted.keys().next().value);
+  if(painted.size>96)painted.delete(painted.keys().next().value);
   return image;
 }
 function part(ctx,name,index,a,x,y,w,h,box){
@@ -109,12 +130,13 @@ function curve(ctx,x,y,cx,cy,ex,ey,color,width=1){
 }
 function features(ctx,a,pose,blink,eyes,mouth,side){
   const eyeInk=rgb(skinPalette[a.skin][1])[1]<121?'#312120':'#4c3023';
-  const soft=rgb(skinPalette[a.skin][1])[1]<121?'#50332a':'#825543';
+  const skin=skinPalette[a.skin][1],hair=a.hairTint??hairPalette[a.hairColor][1];
+  const soft=skinInk(skin,128),hairInk=skinInk(hair,150);
   const [x,y,gap]=eyes,[mx,my]=mouth;
   const closed=blink||pose==='sleep'||a.eyes===2,joy=pose==='joy',surprise=pose==='surprise';
   const each=(spacing,draw)=>side?draw(0,1):[-1,1].forEach(sign=>draw(sign*spacing,sign));
   if(a.brows!==3)glyph(ctx,x,y-5.6,'brows',a,t=>each(gap+t*.22,(d,sign)=>{
-    curve(ctx,d-2,1,d,[-1.9,0,-2.5][a.brows],d+2,a.brows===2?sign:-.4,soft,.74);
+    curve(ctx,d-2,1,d,[-1.9,0,-2.5][a.brows],d+2,a.brows===2?sign:-.4,hairInk,.74);
   }));
   glyph(ctx,x,y,'eyes',a,t=>each(gap+t*.25,(d,sign)=>{
     if(closed||joy){
@@ -136,19 +158,22 @@ function features(ctx,a,pose,blink,eyes,mouth,side){
     else if(joy||a.mouth===1||pose==='eat'){
       oval(ctx,0,0,2.45,1.65,eyeInk);oval(ctx,.05,.55,1.63,.58,'#e49b81');
     }else curve(ctx,-2,0,0,a.mouth===3?.82:2.9,2,0,eyeInk,.92);
-    if(a.beard===1)curve(ctx,-3.4,-1.6,0,-5,3.4,-1.6,soft,1.3);
-    if(a.beard>1)oval(ctx,0,3,2.5,a.beard===2?1.32:.64,soft);
+    if(a.beard===1||a.beard===5)curve(ctx,-3.4,-1.6,0,-5,3.4,-1.6,hairInk,a.beard===5?.82:1.3);
+    if(a.beard>=2&&a.beard<=4){
+      oval(ctx,0,3,a.beard===4?4.8:2.5,a.beard===3?.64:1.38,hairInk);
+      if(a.beard===4)curve(ctx,-4,2.1,0,5.4,4,2.1,hairInk,1.05);
+    }
   });
   if(a.ears||Object.values(a.tune?.ears??{}).some(Boolean))glyph(ctx,x,y+2,'ears',a,t=>{
     each(gap+9+t*.21,(d,sign)=>{
       oval(ctx,side?d-11:d,0,a.ears===1?1:2.2,2.35,skinPalette[a.skin][1]);
-      oval(ctx,side?d-11:d+sign*.2,.2,.65,1.15,'#ba835e');
+      oval(ctx,side?d-11:d+sign*.2,.2,.65,1.15,skinInk(skin,156));
     });
   });
 }
 
 let faceLayer;
-function placeFeatures(ctx,index,offset,scale,a,pose,blink,eyes,mouth,side){
+function placeFeatures(ctx,name,index,offset,scale,a,pose,blink,eyes,mouth,side){
   faceLayer??=surface();
   const face=faceLayer.getContext('2d');
   face.setTransform(1,0,0,1,0,0);face.clearRect(0,0,cell,cell);
@@ -156,24 +181,31 @@ function placeFeatures(ctx,index,offset,scale,a,pose,blink,eyes,mouth,side){
   face.translate(64,64);
   features(face,a,pose,blink,eyes,mouth,side);
   face.globalCompositeOperation='destination-in';
-  drawCell(face,sheet('skin-zones'),index,...offset,cell*scale,cell*scale);
+  face.drawImage(materialCell(name,index).skin,...offset,cell*scale,cell*scale);
   face.restore();
   ctx.drawImage(faceLayer,-64,-64);
 }
 function headShape(a,view){
   const scale=.62;
-  const [left,right,eyesY,mouthY]=front[a.hair],mid=(left+right)/2;
-  const headWidth=(right-left)*scale+36;
+  const asset=styles.hair[a.hair],name=asset.sheet,old=name==='head-core';
+  const side=view.side&&(!view.oblique||old);
+  const direction=view.rearward?(old?32:2):side?(old?16:1):view.oblique?3:0;
+  const index=asset.cell+direction;
+  const [box,points,earGuides]=materialGuides[name][index];
+  const headWidth=(box[2]-box[0])*scale;
   if(view.rearward){
-    const box=rear[a.hair],w=(box[2]-box[0])*scale,h=(box[3]-box[1])*scale;
-    return {name:'heads-back',index:a.hair,x:-w/2+(view.side?-3:0),y:1-h,w,h,box,headWidth};
+    const w=headWidth,h=(box[3]-box[1])*scale;
+    return {name,index,x:-w/2+(view.side?-3:0),y:1-h,w,h,box,headWidth};
   }
-  const [px,py,mx,my]=profile[a.hair];
-  const eyeX=view.side?(view.oblique?10:16):0;
-  const x=view.side?eyeX-px*scale:-mid*scale,y=eyeLine-(view.side?py:eyesY)*scale;
-  return {name:'neutral-heads',index:(view.side?16:0)+a.hair,x,y,w:cell*scale,h:cell*scale,
-    eyes:[eyeX,eyeLine,view.side?0:(right-left)*scale/2],mouth:[view.side?x+mx*scale:0,y+(view.side?my:mouthY)*scale],
-    headWidth,scale};
+  const middle=side?points[0]:(points[0]+points[1])/2;
+  const ey=side?points[1]:points[2],my=points[3];
+  const eyeX=side?(view.oblique?10:16):view.oblique?7:0;
+  const x=eyeX-middle*scale,y=eyeLine-ey*scale;
+  const mouthX=side?points[2]:points[4]??middle;
+  return {name,index,x,y,w:cell*scale,h:cell*scale,
+    eyes:[eyeX,eyeLine,side?0:(points[1]-points[0])*scale/2],mouth:[x+mouthX*scale,y+my*scale],
+    ears:earGuides?.map(([px,py])=>[x+px*scale,y+py*scale]),
+    headWidth,side,scale};
 }
 function shadeBrim(ctx,mount){
   const {x,w,seat}=mount;
@@ -210,7 +242,7 @@ function paintHead(ctx,a,shape,view,pose,blink,mount){
   }
   const {name,index,x,y,w,h,box}=shape;
   part(layer,name,index,a,x,y,w,h,box);
-  if(shape.eyes)placeFeatures(layer,index,[x,y],shape.scale,a,pose,blink,shape.eyes,shape.mouth,view.side);
+  if(shape.eyes)placeFeatures(layer,name,index,[x,y],shape.scale,a,pose,blink,shape.eyes,shape.mouth,shape.side);
   if(mount)shadeBrim(layer,mount);
   layer.restore();
   ctx.drawImage(headLayer,-64,-64);
@@ -219,16 +251,16 @@ function eyewear(ctx,a,shape,view){
   if(!a.glasses||!shape.eyes)return;
   const index=3+a.glasses,box=detail[index], [eyeX,y,gap]=shape.eyes;
   const ink=['','#70432e','#3e352e','#a27b4e','#38574f'][a.glasses];
-  if(view.side){
+  if(shape.side){
     curve(ctx,eyeX-5,y-2,eyeX-13,y-3,eyeX-22,y+.2,ink,1.18);
     const half=[box[0],box[1],(box[0]+box[2])/2,box[3]];
     drawCell(ctx,sheet('details'),index,eyeX-6,y-4.8,13,10,half);
     curve(ctx,eyeX+5,y-1,eyeX+7,y-2,eyeX+8,y-.3,ink,.8);
   }else{
     const w=gap*2+12;
-    curve(ctx,-w/2,y-2,-w/2-3,y-2,-w/2-5,y+1,ink,1);
-    curve(ctx,w/2,y-2,w/2+3,y-2,w/2+5,y+1,ink,1);
-    prop(ctx,index,-w/2,y-5.6,w,11);
+    curve(ctx,eyeX-w/2,y-2,eyeX-w/2-3,y-2,eyeX-w/2-5,y+1,ink,1);
+    curve(ctx,eyeX+w/2,y-2,eyeX+w/2+3,y-2,eyeX+w/2+5,y+1,ink,1);
+    prop(ctx,index,eyeX-w/2,y-5.6,w,11);
   }
 }
 function head(ctx,a,pose,blink,view,headroom){
@@ -248,11 +280,12 @@ function head(ctx,a,pose,blink,view,headroom){
     prop(ctx,10,view.side?-17:-25,y,14,9);
   }
   if(a.accessory===4&&!view.rearward){
-    const eyeX=shape.eyes[0];
-    if(view.side){
-      const box=detail[11], half=[box[0],box[1],(box[0]+box[2])/2,box[3]];
-      drawCell(ctx,sheet('details'),11,eyeX-23,-4,7,11,half);
-    }else prop(ctx,11,-23,-4,46,10);
+    const box=detail[11],split=(box[0]+box[2])/2;
+    const half=[box[0],box[1],split,box[3]];
+    for(const [earX,earY] of shape.ears??[]){
+      oval(ctx,earX,earY+.6,2.3,1.7,'#3f2a2240');
+      drawCell(ctx,sheet('details'),11,earX-2.3,earY-1.6,4.6,7.8,half);
+    }
   }
   ctx.restore();
 }
@@ -272,7 +305,17 @@ function collarAndHolding(ctx,a,view,w,neck,pose,pageTurn){
     const shade=a.bag===1?'#66452ed9':'#38424bd9';
     for(const sign of side?[-1]:[-1,1])curve(ctx,sign*w*.29,neck+4,sign*w*.22,neck+10,sign*w*.29,neck+19,shade,2);
   }
-  if(a.accessory===2)prop(ctx,9,-(side?10:14),neck-1,side?22:29,24);
+  if(a.accessory===2){
+    oval(ctx,side?1:0,neck+5,w*.25,4,'#35271c44');
+    prop(ctx,9,-(side?8.7:11.8),neck-1,side?19:24,19);
+  }
+  if(a.accessory===5){
+    const center=side?3:0,edge=side?7:9;
+    curve(ctx,center-edge,neck+2,center-5,neck+7,center,neck+11,'#493329',1.37);
+    curve(ctx,center,neck+11,center+5,neck+8,center+edge,neck+2,'#493329',1.37);
+    oval(ctx,center,neck+12.7,2,2.7,'#445a54');
+    oval(ctx,center-.34,neck+11.8,.7,.67,'#a9b9a2');
+  }
   if(a.accessory===1&&pose!=='read'){
     const x=side?6:0,y=neck+16;
     curve(ctx,-w*.16,neck+2,-w*.14,y-6,x-8,y+2,'#63452f',1.18);
@@ -282,7 +325,10 @@ function collarAndHolding(ctx,a,view,w,neck,pose,pageTurn){
   if(a.pin&&pose!=='read'){
     const item=collectionItem(a.pin);
     const y=neck+12,x=w*.24;
-    if(item?.sheet==='regional-objects')drawCell(ctx,sheet(item.sheet),item.art,x-4,y-4,8.4,8.4,regionalObjects[item.art]);
+    if(item?.sheet&&available(item.sheet)){
+      const bounds=item.sheet==='regional-objects'?regionalObjects:materialGuides[item.sheet];
+      drawCell(ctx,sheet(item.sheet),item.art,x-4,y-4,8.4,8.4,bounds[item.art]);
+    }
     else oval(ctx,x,y,2.25,2.25,'#d7a657');
   }
   if(pose==='read')openBook(ctx,a,w,neck,pageTurn);
@@ -332,7 +378,7 @@ function drawFoot(ctx,a,view,clothing,box,leg,w,bootY,bootH,side,step,walking){
     const ankle=w*(single?.14:.105);
     ctx.beginPath();
     ctx.roundRect(-ankle/2,-bootH-3,ankle,Math.max(3.5,bootH+4-height*.61),1.7);
-    ctx.fillStyle=clothing.id==='coast-embroidered'?skinPalette[a.skin][1]:'#695343';
+    ctx.fillStyle=clothing.id==='coast-embroidered'?skinInk(skinPalette[a.skin][1],184):'#695343';
     ctx.fill();
     drawCell(ctx,sheet('footwear'),pick,-width/2,-height,width,height,crop);
   }
@@ -340,7 +386,7 @@ function drawFoot(ctx,a,view,clothing,box,leg,w,bootY,bootH,side,step,walking){
 }
 function body(ctx,a,view,pose,frame){
   const clothing=styles.outfit[a.outfit],old=clothing.sheet==='garments';
-  const bounds=old?garment:wardrobe,leg=clothing.cell+(old?0:view.angle),box=bounds[leg],frontBox=bounds[clothing.cell];
+  const bounds=materialGuides[clothing.sheet],leg=clothing.cell+(old?0:view.angle),box=bounds[leg],frontBox=bounds[clothing.cell];
   const h=(frontBox[3]-frontBox[1])*.55;
   const w=(box[2]-box[0])*h/(box[3]-box[1])*(old?.98:1.09)*(old&&view.side?.84:1);
   const neck=-h,walking=pose==='walk',phase=(frame%32)/32;
@@ -359,11 +405,14 @@ function body(ctx,a,view,pose,frame){
   if(!view.rearward&&pose!=='read'){
     for(const side of view.side?[-1]:[-1,1]){
       const x=side*(w*.405), y=neck+h*(clothing.id==='coast-embroidered'?.37:.54);
-      oval(ctx,x,y,2.45,3.5,skin);
+      oval(ctx,x,y,2.45,3.5,skinInk(skin,178));
+      oval(ctx,x-.4,y-.36,1.55,2.25,skinInk(skin,206));
     }
   }
   ctx.beginPath();ctx.roundRect(view.side?-3:-5,neck-5,view.side?8:10,8,3);
-  ctx.fillStyle=skin;ctx.fill();
+  const shade=ctx.createLinearGradient(0,neck-5,0,neck+4);
+  shade.addColorStop(0,skinInk(skin,150));shade.addColorStop(1,skinInk(skin,206));
+  ctx.fillStyle=shade;ctx.fill();
   return {neck,w,pageTurn};
 }
 function drawCharacter(canvas,a,inputPose,frame){
@@ -375,7 +424,9 @@ function drawCharacter(canvas,a,inputPose,frame){
   const width=[1,.87,1.143][a.body]+(a.tune?.body?.size??0)*.014;
   ctx.setTransform(canvas.width/cell,0,0,canvas.height/cell,0,0);
   ctx.clearRect(0,0,cell,cell);
-  if(!sheets.every(name=>sheet(name).naturalWidth))return;
+  if(!core.every(available))return;
+  if(!materialReady(faces(a)))a={...a,hair:0};
+  if(!materialReady(styles.outfit[a.outfit].sheet))a={...a,outfit:0};
   const step=pose==='walk'?Math.cos((frame%16)/16*Math.PI*2):0;
   oval(ctx,64,groundY,20+Math.abs(step),3.2,'#47332236');
   ctx.save();
@@ -394,10 +445,13 @@ function drawCharacter(canvas,a,inputPose,frame){
 export function character(canvas,input,pose='look',frame=0){
   const a=appearance(input);
   canvas._spriteInput=[a,pose,frame];
-  if(!canvas._waitingForArt&&sheets.some(name=>!sheet(name).naturalWidth)){
-    canvas._waitingForArt=true;
-    travelerAssets().then(()=>{canvas._waitingForArt=false;if(canvas._spriteInput)drawCharacter(canvas,...canvas._spriteInput);});
-  }
+  const missing=[...core,...additions(a)].filter(name=>!available(name));
+  const pending=missing.join('|');
+  if(pending&&canvas._waitingForArt!==pending){
+    canvas._waitingForArt=pending;
+    travelerAssets(a).then(()=>{if(canvas._spriteInput)drawCharacter(canvas,...canvas._spriteInput);});
+  }else if(!pending)canvas._waitingForArt='';
+
   drawCharacter(canvas,a,pose,frame);
 }
 export function animateWorld(root,avatar,reduced){

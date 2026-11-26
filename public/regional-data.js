@@ -1,5 +1,7 @@
+import {localCrafts} from './local-crafts.js';
 // Geographical facts and sources only. All keepsake names and artwork are original.
 export const regionalItems={
+  ...localCrafts,
   'himi-buri':{name:'寒ブリの木彫り',place:'富山県 氷見市',aliases:['氷見'],pref:'JP-16',themes:['meal'],icon:'fish',source:'https://himi-teichiami.com/teichiami',story:'冬の富山湾と氷見の寒ブリを、手のひらに乗る木彫りに。'},
   'oma-tuna':{name:'大間のマグロの置物',place:'青森県 大間町',aliases:['大間'],pref:'JP-02',themes:['meal'],icon:'tuna',source:'https://oma-wide.net/oomatuna/',story:'津軽海峡でマグロ漁が営まれる大間。濃い藍の背と銀色の腹を、小さな置物にしました。'},
   'nose-star':{name:'北極星のランタン',place:'大阪府・兵庫県 能勢妙見山',aliases:['能勢妙見山','能勢の妙見山'],pref:['JP-27','JP-28'],themes:['hike','tour'],art:15,source:'https://www.myoken.org/omen/',story:'北極星と結びつく妙見信仰から着想を得た、小さな星窓の灯りです。'},
@@ -13,6 +15,14 @@ export const regionalItems={
   'nara-brush':{name:'筆と小さな筆立て',place:'奈良県 奈良市',aliases:['奈良筆','なら工藝館'],pref:'JP-29',themes:['art','tour'],sheet:'regional-objects',art:2,source:'https://www.pref.nara.lg.jp/n101/1382.html',fact:'奈良筆は国の伝統的工芸品に指定されています。',story:'旅先で知った筆づくりを、小さな架空の筆立てと一緒に飾るための品です。'},
   'unzen-steam':{name:'雲仙の湯けむり飾り',place:'長崎県 雲仙温泉',aliases:['雲仙温泉','雲仙地獄','小地獄温泉'],pref:'JP-42',themes:['spa','tour','photo'],sheet:'regional-objects',art:3,source:'https://unzenonsen.unzen.org/watch/jigoku/',fact:'雲仙地獄では、噴気孔から白い水蒸気が立ち上がります。',story:'ゆらぐ湯けむりを白い陶に置き換えた、架空の手のひらサイズの飾りです。'}
 };
+export const regionalTopics={craft:'工芸・芸術・地域産業',tradition:'神話・伝承・歴史・信仰',nature:'自然・地質・動植物',community:'建築・祭り・生活文化',food:'食べ物・飲み物'};
+const legacyTopics={
+  'himi-buri':'food','oma-tuna':'food','nose-star':'tradition','miwa-snake':'tradition','inaba-rabbit':'tradition',
+  'itoigawa-jade':'nature','tateyama-bird':'nature','heisenji-moss':'nature','oshima-camellia':'nature',
+  'kurobe-rail':'community','nara-brush':'craft','unzen-steam':'nature'
+};
+export const regionalTopic=id=>regionalItems[id]?.topic??legacyTopics[id];
+
 export const activityEvents={
   hike:['稜線で深呼吸','風がひんやり。稜線から遠くの山が見えました。','climb'],
   peak:['山頂からの便り','ここまで歩いてきた道が、小さく見えます。','joy'],
@@ -26,6 +36,7 @@ export const activityEvents={
   art:['色を集める日','記憶に残った色をひとつ、手帖に。','read']
 };
 export function keepsakesFor(entry){
+  if(entry.source&&entry.source!=='self-confirmed')return [];
   const place=String(entry.place??'').normalize('NFKC').replace(/\s/g,'');
   return Object.entries(regionalItems).filter(([,item])=>[item.pref].flat().includes(entry.pref)&&
     item.aliases.some(alias=>place.includes(alias))&&(!item.themes||item.themes.includes(entry.activity))).map(([id])=>id);
